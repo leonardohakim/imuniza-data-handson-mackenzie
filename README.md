@@ -22,6 +22,8 @@ OpenDataSUS — bases granulares de doses aplicadas por município, período e f
 IBGE / SIDRA — dados demográficos e socioeconômicos por município (população, renda, IDH)
 Estrutura do Projeto
 handson-eng-dados-sus/
+
+
 ├── data/
 │   ├── raw/            # Dados brutos, sem transformação
 │   ├── processed/       # Dados limpos e padronizados
