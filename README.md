@@ -3,7 +3,7 @@ Projeto desenvolvido para a disciplina de Hands-on Engenharia de Dados aplicada 
 
 ImunizaData
 
-Projeto desenvolvido para a disciplina de Hands-on — Engenharia de Dados aplicada à Saúde Pública.
+Projeto desenvolvido para a disciplina de Hands-on  Engenharia de Dados aplicada à Saúde Pública.
 
 Integrantes
 Nome	RA	GitHub
@@ -33,6 +33,7 @@ handson-eng-dados-sus/
 │   └── models/            # Treinamento e avaliação de modelos de ML
 ├── reports/              # Análises, gráficos e relatórios finais
 └── README.md
+
 Metodologia
 Etapa 1 — Ingestão de Dados
 
