@@ -27,18 +27,29 @@ A proposta busca transformar dados públicos, hoje dispersos e pouco explorados,
 
 ## Estrutura do Projeto
 
+Os dados não ficam em pastas locais — vivem em três buckets do MinIO
+(subida via `docker-compose.yml`), seguindo a convenção raw → trusted →
+refined:
+
 ```
-handson-eng-dados-sus/
-├── data/
-│   ├── raw/          # Dados brutos, sem transformacao
-│   ├── processed/    # Dados limpos e padronizados
-│   └── external/     # Dados auxiliares (IBGE, malhas geograficas etc.)
-├── notebooks/        # Notebooks de exploracao e prototipagem
+imuniza-data-handson-mackenzie/
+├── docs/
+│   ├── dicionario_dados.md     # Schema de cada camada (raw/trusted/refined)
+│   └── decisoes_limpeza.md     # Decisões de limpeza documentadas e justificadas
+├── notebooks/                  # Notebooks de exploracao e prototipagem
 ├── src/
-│   ├── ingestion/    # Scripts de coleta/extracao de dados
-│   ├── cleaning/     # Scripts de limpeza e padronizacao
-│   └── models/       # Treinamento e avaliacao de modelos de ML
-├── reports/           # Analises, graficos e relatorios finais
+│   ├── config.py                # Configuração de acesso ao MinIO
+│   ├── validate_setup.py        # Healthcheck do MinIO e das fontes externas
+│   ├── ingestion/                # Etapa 1 — coleta (fontes -> bucket "raw")
+│   │   ├── download_ibge.py
+│   │   ├── download_pni.py
+│   │   └── inspect_pni.py
+│   └── cleaning/                  # Etapa 2 — limpeza (bucket "raw" -> "trusted" -> "refined")
+│       ├── clean_ibge.py
+│       ├── clean_pni.py
+│       └── build_coverage.py
+├── reports/                     # Gráficos e relatórios gerados pelos notebooks
+├── docker-compose.yml            # MinIO local (buckets raw / trusted / refined)
 └── README.md
 ```
 
@@ -64,10 +75,38 @@ Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valo
 ## Como Executar
 
 ```bash
-git clone https://github.com/leonardohakim/handson-eng-dados-sus.git
-cd handson-eng-dados-sus
+git clone https://github.com/leonardohakim/imuniza-data-handson-mackenzie.git
+cd imuniza-data-handson-mackenzie
 pip install -r requirements.txt
+docker-compose up -d          # sobe o MinIO local (portas 9000/9001)
+python -m src.validate_setup  # confere MinIO + fontes externas, cria os buckets
 ```
+
+### Etapa 1 — Ingestão (bucket `raw`)
+
+```bash
+python -m src.ingestion.download_ibge --ano 2024
+python -m src.ingestion.download_pni --ano 2025
+python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema real antes de limpar
+```
+
+### Etapa 2 — Limpeza e Análise Exploratória (buckets `trusted` / `refined`)
+
+```bash
+python -m src.cleaning.clean_ibge --ano 2024
+python -m src.cleaning.clean_pni --ano 2025
+python -m src.cleaning.build_coverage --ano 2025
+jupyter notebook notebooks/02_analise_exploratoria.ipynb
+```
+
+Decisões de limpeza (o quê e por quê) estão documentadas em
+[`docs/decisoes_limpeza.md`](docs/decisoes_limpeza.md); o schema de cada
+camada de dado está em [`docs/dicionario_dados.md`](docs/dicionario_dados.md).
+
+⚠️ Os nomes de coluna do CSV do PNI usados em `src/cleaning/clean_pni.py`
+foram definidos sem acesso aos dados reais (ambiente de desenvolvimento sem
+rede liberada para o DATASUS). Rode `inspect_pni.py` primeiro e ajuste
+`COLUMN_CANDIDATES` nesse arquivo se os nomes reais divergirem.
 
 ## Licença
 

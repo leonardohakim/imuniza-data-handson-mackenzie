@@ -1,3 +1,7 @@
 boto3
 requests
 pandas
+pyarrow
+matplotlib
+seaborn
+jupyter
