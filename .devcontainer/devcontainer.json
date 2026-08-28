@@ -1,9 +1,9 @@
 {
-  "name": "imuniza-data",
-  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "name": "Python & Docker Environment",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-  },
-  "postCreateCommand": "pip install -r requirements.txt",
-  "forwardPorts": [9000, 9001]
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": false
+    }
+  }
 }

@@ -18,7 +18,7 @@ except ModuleNotFoundError:
 MINIO_HOST = os.getenv("MINIO_HOST", "localhost")
 MINIO_API_PORT = os.getenv("MINIO_API_PORT", "9000")
 MINIO_CONSOLE_PORT = os.getenv("MINIO_CONSOLE_PORT", "9001")
-MINIO_BUCKETS = ("raw", "trusted", "refined")
+MINIO_BUCKETS = ("bronze", "silver", "gold")
 
 
 def check_endpoint(name: str, url: str) -> bool:
@@ -61,7 +61,7 @@ def check_minio_buckets() -> bool:
 
 def check_source(name: str, url: str) -> bool:
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
     except requests.RequestException as error:
         print(f"[FAIL] {name}: {error}")
@@ -69,7 +69,6 @@ def check_source(name: str, url: str) -> bool:
 
     print(f"[OK] {name} respondeu {response.status_code}")
     return True
-
 
 def main() -> int:
     api_url = f"http://{MINIO_HOST}:{MINIO_API_PORT}/minio/health/live"

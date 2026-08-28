@@ -20,7 +20,12 @@ from src.config import MINIO_ACCESS_KEY, MINIO_ENDPOINT, MINIO_SECRET_KEY
 CKAN_BASE = "https://dadosabertos.saude.gov.br/api/3/action/package_show"
 DATASET_PAGE = "https://dadosabertos.saude.gov.br/dataset/{dataset_slug}"
 
-BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "raw")
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+}
+
+BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "bronze")
 MONTH_ORDER = {
     "janeiro": 1,
     "fevereiro": 2,
@@ -48,19 +53,22 @@ def get_s3_client():
 
 
 def list_resources(dataset_slug: str) -> list[dict]:
-    response = requests.get(CKAN_BASE, params={"id": dataset_slug}, timeout=30)
-    if response.ok:
-        payload = response.json()
-        if not payload.get("success"):
-            raise RuntimeError(f"CKAN respondeu erro para {dataset_slug}: {payload}")
-        return payload["result"]["resources"]
+    try:
+        response = requests.get(CKAN_BASE, params={"id": dataset_slug}, headers=HEADERS, timeout=60)
+        if response.ok:
+            payload = response.json()
+            if not payload.get("success"):
+                raise RuntimeError(f"CKAN respondeu erro para {dataset_slug}: {payload}")
+            return payload["result"]["resources"]
+    except requests.RequestException:
+        print(f"[AVISO] Falha na API CKAN para {dataset_slug}. Tentando scraping da página...")
 
     return list_resources_from_page(dataset_slug)
 
 
 def list_resources_from_page(dataset_slug: str) -> list[dict]:
     page_url = DATASET_PAGE.format(dataset_slug=dataset_slug)
-    page = requests.get(page_url, timeout=30)
+    page = requests.get(page_url, headers=HEADERS, timeout=60)
     page.raise_for_status()
 
     resource_paths = dict.fromkeys(
@@ -68,7 +76,7 @@ def list_resources_from_page(dataset_slug: str) -> list[dict]:
     )
     resources = []
     for resource_path in resource_paths:
-        resource_page = requests.get(urljoin(page_url, resource_path), timeout=30)
+        resource_page = requests.get(urljoin(page_url, resource_path), headers=HEADERS, timeout=60)
         resource_page.raise_for_status()
         csv_url_match = re.search(
             r"https?://[^\"<> ]+\.(?:zip|csv)(?:\?[^\"<> ]*)?",
@@ -116,7 +124,7 @@ def download_to_temp(url: str) -> tuple[Path, str, int]:
 
     try:
         with temporary_file:
-            with requests.get(url, stream=True, timeout=300) as response:
+            with requests.get(url, stream=True, headers=HEADERS, timeout=300) as response:
                 response.raise_for_status()
                 for chunk in response.iter_content(chunk_size=8 * 1024 * 1024):
                     if not chunk:

@@ -13,7 +13,7 @@ from src.config import MINIO_ACCESS_KEY, MINIO_ENDPOINT, MINIO_SECRET_KEY
 
 
 SIDRA_URL = "https://apisidra.ibge.gov.br/values/t/6579/n6/all/v/9324/p/{year}"
-BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "raw")
+BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "bronze")
 
 
 def get_s3_client():
