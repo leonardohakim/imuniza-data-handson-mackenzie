@@ -1,0 +1,314 @@
+diff --git a/docs/decisoes_limpeza.md b/docs/decisoes_limpeza.md
+index 05b0f2c..18cbb3a 100644
+--- a/docs/decisoes_limpeza.md
++++ b/docs/decisoes_limpeza.md
+@@ -18,11 +18,13 @@ reprodutibilidade e na rastreabilidade").
+ 
+ | Decisão | Justificativa |
+ |---|---|
++| Processar cada arquivo mensal em streaming (blocos/chunks), nunca carregando o ZIP nem o CSV inteiros em memória | Os arquivos do PNI são nacionais e grandes (abril/2025 tem ~4GB comprimido; descompactado passa de 15-20GB) — isso não cabe na RAM disponível (confirmado na prática: o processo foi encerrado por falta de memória ao tentar carregar o arquivo inteiro). A solução foi ler o objeto do MinIO em blocos, descompactar o ZIP também em streaming (biblioteca `stream-unzip`, que não precisa acessar o fim do arquivo como o `zipfile` padrão) e processar o CSV em pedaços de 100 mil linhas por vez, agregando cada pedaço antes de descartá-lo. |
++| Restringir o escopo a 2025 e aos meses que couberam no disco do ambiente (jan-jun + ago), documentando os meses ausentes | O disco disponível no ambiente de desenvolvimento (32GB) esgotou ao tentar baixar os 12 meses nacionais completos de 2025 (cada mês entre 1,4GB e 5GB). Essa é a mesma restrição de escopo que o commit original da Etapa 1 já pretendia resolver (região Sudeste) mas não chegou a implementar no código. Dado o prazo da entrega, optamos por manter o dado nacional (mais representativo) e reduzir o número de meses, em vez de filtrar por região — jul, set, out, nov e dez/2025 ficam de fora desta rodada. |
+ | Resolver nomes de coluna dinamicamente (por lista de candidatos), em vez de fixar nomes | Não tínhamos os dados reais em mãos para confirmar o schema exato ao escrever o pipeline (ver `inspect_pni.py` da Etapa 1, criado exatamente por essa incerteza). Fixar nomes errados quebraria o pipeline silenciosamente ou praticamente às cegas; o resolver falha de forma explícita e lista as colunas disponíveis quando não encontra um candidato. |
+ | Descartar linhas sem código de município válido (7 dígitos) | Sem município não é possível agregar por município nem cruzar com a população do IBGE — a linha não é utilizável para o objetivo do projeto. |
+ | Descartar linhas sem data de aplicação válida | A agregação é por mês; uma linha sem data não pode ser alocada a um período. |
+ | Detectar o formato da data por amostra (`%Y-%m-%d` vs `%d/%m/%Y` etc.) em vez de usar heurística `dayfirst` | `dayfirst=True/False` do pandas resolve a ambiguidade só parcialmente e pode inverter dia e mês silenciosamente quando o formato real do dado é o oposto do assumido — isso foi detectado durante o desenvolvimento (teste com datas ISO `2025-01-05` sendo lidas como 1º de maio). Testar qual formato explícito casa com mais valores da amostra evita esse erro silencioso. |
+-| Remover duplicatas exatas (linha inteira repetida) | Indicam erro de extração/join na fonte (mesmo registro exportado duas vezes), não doses reais adicionais — mantê-las infla artificialmente a contagem de doses. |
++| Remover duplicatas exatas (linha inteira repetida), mas só dentro do mesmo bloco de streaming (chunk de 100 mil linhas) | Indicam erro de extração/join na fonte (mesmo registro exportado duas vezes), não doses reais adicionais — mantê-las infla artificialmente a contagem de doses. Limitação aceita: como o arquivo é processado em streaming (ver decisão acima), uma duplicata cujas duas ocorrências caiam em blocos diferentes não é detectada. Trade-off necessário para processar arquivos maiores que a RAM disponível; duplicatas exatas tendem a ser raras e, quando ocorrem, tendem a estar próximas no arquivo de origem. |
+ | Agregar para `município × mês (× vacina)` já na limpeza, em vez de manter uma linha por dose | Reduz drasticamente o volume de dados (o objetivo do projeto é município, não paciente individual) e evita manter dado de nível de paciente além do necessário. |
+ | Sinalizar município-mês fora de `[Q1 − 3·IQR, Q3 + 3·IQR]` como outlier, **sem remover** | Um valor muito alto pode ser um polo regional de vacinação (município que atende vizinhos) — informação relevante para o objetivo do projeto (priorizar ações), não ruído a descartar. A decisão de remover ou não fica para a análise exploratória, com a coluna `outlier_iqr` disponível para essa investigação. |
+ 
+@@ -31,10 +33,16 @@ reprodutibilidade e na rastreabilidade").
+ | Decisão | Justificativa |
+ |---|---|
+ | Métrica é "doses aplicadas por 100 habitantes", não "% de pessoas vacinadas" | O dataset agregado não separa por dose (1ª, 2ª, reforço) de forma confiável em todos os casos, então uma pessoa com 2 doses conta 2x no numerador. Chamar isso de "cobertura populacional" seria impreciso; documentamos a métrica como um proxy de intensidade de vacinação. Reavaliar na Etapa 3 se for possível filtrar por "1ª dose"/dose única. |
+-| Manter municípios com população no IBGE mas 0 doses no PNI (em vez de excluir) | "Sem dado de vacinação" é, em si, um sinal relevante para o objetivo do projeto (identificar áreas de baixa cobertura para priorizar ações) — excluir esses municípios esconderia exatamente o que o projeto quer encontrar. |
++| Manter municípios com população no IBGE mas 0 doses no PNI (em vez de excluir) | "Sem dado de vacinação" é, em si, um sinal relevante para o objetivo do projeto (identificar áreas de baixa cobertura para priorizar ações) — excluir esses municípios esconderia exatamente o que o projeto quer encontrar. **Atenção ao interpretar**: com o escopo reduzido a jan-jun + ago/2025 (ver decisão de escopo acima), "0 doses" pode significar apenas "sem dose nos meses coletados", não necessariamente "sem vacinação no ano todo" — deixar isso explícito em qualquer gráfico/conclusão da EDA. |
+ 
+ ## Pendências conhecidas / próximos passos
+ 
++- Faltam jul, set, out, nov e dez/2025 no dataset de doses do PNI  o
++  disco do ambiente de desenvolvimento esgotou ao tentar baixar o ano
++  completo (arquivos nacionais de 1,4GB a 5GB por mês). Se der para
++  liberar mais disco (Codespace com máquina maior, ou rodar localmente
++  com mais espaço), completar o ano deixa a métrica de cobertura mais
++  representativa.
+ - As fontes de renda/IDH (IBGE/SIDRA) citadas no README como variável
+   socioeconômica ainda não têm um script de ingestão — só população foi
+   coletada até aqui. Precisa de uma decisão: adicionar a coleta (outra
+diff --git a/requirements.txt b/requirements.txt
+index 1ca0805..233eb97 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -5,3 +5,4 @@ pyarrow
+ matplotlib
+ seaborn
+ jupyter
++stream-unzip
+diff --git a/src/cleaning/clean_pni.py b/src/cleaning/clean_pni.py
+index 0f5feb8..ad05015 100644
+--- a/src/cleaning/clean_pni.py
++++ b/src/cleaning/clean_pni.py
+@@ -27,24 +27,54 @@ Decisões de limpeza (documentadas)
+   outlier em uma coluna `outlier_iqr`, mas **não é removido** — pode ser um
+   polo regional de vacinação (concentra aplicação de municípios vizinhos) e
+   merecer investigação na Etapa 2, não descarte automático.
++
++Por que o processamento é em streaming (chunks), não em memória
++------------------------------------------------------------------
++Os CSVs mensais do PNI são nacionais e grandes (o de abril/2025, por
++exemplo, tem ~4GB comprimido  descompactado e carregado como DataFrame
++facilmente passa de 15-20GB). Isso não cabe na RAM de uma máquina comum
++(nem do Codespace usado para desenvolver isso, que tem 7.8GB). Em vez de
++baixar o ZIP inteiro e ler o CSV inteiro de uma vez, este módulo:
++1. Lê o objeto do MinIO em blocos pequenos (streaming do S3, via
++   `botocore`'s `StreamingBody`), nunca materializando o ZIP inteiro em
++   memória ou disco.
++2. Descompacta o ZIP também em streaming, com a biblioteca `stream-unzip`
++   (que não precisa "seekar" no arquivo, ao contrário do `zipfile` padrão).
++3. Lê o CSV descomprimido em pedaços (`chunksize` do pandas) em vez de um
++   DataFrame único, limpando e agregando cada pedaço antes de descartá-lo.
++
++Limitação documentada: a remoção de duplicatas exatas (linha completa
++repetida) só enxerga duplicatas dentro do mesmo pedaço (chunk), não no
++arquivo inteiro — um duplicado que caia em pedaços diferentes não é
++detectado. Isso é um trade-off aceito para conseguir processar arquivos
++maiores que a RAM disponível; duplicatas exatas tendem a ser raras e, na
++prática, adjacentes no arquivo de origem (mesma exportação), então a maior
++parte ainda cai no mesmo pedaço.
+ """
+ 
+ import argparse
+ import io
+ import os
+-import zipfile
+ from dataclasses import dataclass, field
+ from pathlib import Path
+ 
+ import boto3
+ import pandas as pd
+ from botocore.client import Config
++from stream_unzip import stream_unzip
+ 
+ from src.config import MINIO_ACCESS_KEY, MINIO_ENDPOINT, MINIO_SECRET_KEY
+ 
+ BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "raw")
+ BUCKET_TRUSTED = os.getenv("MINIO_TRUSTED_BUCKET", "trusted")
+ 
++# Quantas linhas o pandas lê por vez. ~100k linhas de um CSV largo (30+
++# colunas de texto) fica na casa de algumas centenas de MB — seguro para
++# uma máquina com poucos GB de RAM livre.
++CHUNK_SIZE = 100_000
++# Tamanho do bloco de bytes lido do S3/MinIO por vez (streaming).
++S3_READ_CHUNK_SIZE = 8 * 1024 * 1024
++
+ # Ordem de prioridade dos candidatos para cada campo que precisamos.
+ # Ajuste aqui se `inspect_pni.py` mostrar nomes diferentes dos previstos.
+ COLUMN_CANDIDATES: dict[str, list[str]] = {
+@@ -161,31 +191,56 @@ def parse_application_dates(raw_dates: pd.Series) -> pd.Series:
+     return pd.to_datetime(raw_dates, format=best_format, errors="coerce")
+ 
+ 
+-def read_monthly_zip(zip_bytes: bytes) -> pd.DataFrame:
+-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+-        csv_members = [name for name in archive.namelist() if name.lower().endswith(".csv")]
+-        if not csv_members:
+-            raise RuntimeError("Nenhum CSV encontrado dentro do ZIP do PNI")
+-        with archive.open(csv_members[0]) as csv_file:
+-            return pd.read_csv(csv_file, sep=";", encoding="latin1", dtype=str, low_memory=False)
++class _StreamUnzipReader(io.RawIOBase):
++    """Adapta o gerador de bytes descomprimidos do stream_unzip para um
++    objeto file-like que o pandas consegue ler incrementalmente."""
++
++    def __init__(self, chunks):
++        self._chunks = chunks
++        self._buffer = b""
++
++    def readable(self) -> bool:
++        return True
+ 
++    def readinto(self, b) -> int:
++        while not self._buffer:
++            try:
++                self._buffer = next(self._chunks)
++            except StopIteration:
++                return 0
++        n = min(len(b), len(self._buffer))
++        b[:n] = self._buffer[:n]
++        self._buffer = self._buffer[n:]
++        return n
+ 
+-def clean_month_dataframe(raw_df: pd.DataFrame, source_name: str) -> tuple[pd.DataFrame, CleaningReport]:
+-    report = CleaningReport(arquivo=source_name, linhas_lidas=len(raw_df))
+-    df = raw_df.copy()
+ 
++def _s3_object_byte_chunks(s3, bucket: str, key: str, chunk_size: int = S3_READ_CHUNK_SIZE):
++    """Lê um objeto do MinIO/S3 em blocos, sem carregar tudo na memória."""
++    body = s3.get_object(Bucket=bucket, Key=key)["Body"]
++    while True:
++        chunk = body.read(chunk_size)
++        if not chunk:
++            break
++        yield chunk
++
++
++def _resolve_columns(sample_df: pd.DataFrame) -> dict:
+     resolved = {
+-        field_name: resolve_column(df, field_name)
++        field_name: resolve_column(sample_df, field_name)
+         for field_name in ("codigo_municipio", "data_aplicacao", "vacina_nome")
+     }
+     for field_name in ("dose", "paciente_idade"):
+         try:
+-            resolved[field_name] = resolve_column(df, field_name)
++            resolved[field_name] = resolve_column(sample_df, field_name)
+         except KeyError:
+             resolved[field_name] = None
+-    report.colunas_resolvidas = resolved
++    return resolved
+ 
+-    df = df.rename(columns={
++
++def _clean_and_aggregate_chunk(chunk: pd.DataFrame, resolved: dict, report: CleaningReport) -> pd.DataFrame:
++    """Limpa um pedaço (chunk) do CSV e devolve já agregado por município/mês."""
++    report.linhas_lidas += len(chunk)
++    df = chunk.rename(columns={
+         original: logical for logical, original in resolved.items() if original is not None
+     })
+ 
+@@ -193,29 +248,41 @@ def clean_month_dataframe(raw_df: pd.DataFrame, source_name: str) -> tuple[pd.Da
+         df["codigo_municipio"].astype(str).str.extract(r"(\d+)", expand=False).str.zfill(7)
+     )
+     municipio_invalido = ~df["codigo_municipio"].str.match(r"^\d{7}$", na=False)
+-    report.municipio_invalido = int(municipio_invalido.sum())
+-    df = df.loc[~municipio_invalido].copy()
++    report.municipio_invalido += int(municipio_invalido.sum())
++    df = df.loc[~municipio_invalido]
+ 
+     df["data_aplicacao"] = parse_application_dates(df["data_aplicacao"])
+     data_invalida = df["data_aplicacao"].isna()
+-    report.data_invalida = int(data_invalida.sum())
+-    df = df.loc[~data_invalida].copy()
++    report.data_invalida += int(data_invalida.sum())
++    df = df.loc[~data_invalida]
+ 
++    # Duplicatas exatas: só detectadas dentro do próprio chunk (ver
++    # docstring do módulo — trade-off necessário para processar em
++    # streaming arquivos maiores que a RAM disponível).
+     duplicadas = df.duplicated()
+-    report.duplicatas_removidas = int(duplicadas.sum())
+-    df = df.loc[~duplicadas].copy()
++    report.duplicatas_removidas += int(duplicadas.sum())
++    df = df.loc[~duplicadas]
+ 
+-    report.linhas_finais = len(df)
++    report.linhas_finais += len(df)
+ 
++    df = df.copy()
+     df["ano_mes"] = df["data_aplicacao"].dt.to_period("M").astype(str)
+     aggregation_keys = ["codigo_municipio", "ano_mes"]
+     if resolved.get("vacina_nome"):
+         aggregation_keys.append("vacina_nome")
+ 
++    return df.groupby(aggregation_keys, dropna=False).size().reset_index(name="doses_aplicadas")
++
++
++def _combine_partial_aggregates(partial_aggregates: list[pd.DataFrame], resolved: dict) -> tuple[pd.DataFrame, int]:
++    """Soma as agregações parciais de cada chunk e calcula outliers no total do mês."""
++    aggregation_keys = ["codigo_municipio", "ano_mes"]
++    if resolved.get("vacina_nome"):
++        aggregation_keys.append("vacina_nome")
++
++    combined = pd.concat(partial_aggregates, ignore_index=True)
+     aggregated = (
+-        df.groupby(aggregation_keys, dropna=False)
+-        .size()
+-        .reset_index(name="doses_aplicadas")
++        combined.groupby(aggregation_keys, dropna=False)["doses_aplicadas"].sum().reset_index()
+     )
+ 
+     monthly_totals = aggregated.groupby(["codigo_municipio", "ano_mes"])["doses_aplicadas"].sum().reset_index()
+@@ -223,14 +290,51 @@ def clean_month_dataframe(raw_df: pd.DataFrame, source_name: str) -> tuple[pd.Da
+     iqr = q3 - q1
+     lower_bound, upper_bound = q1 - 3 * iqr, q3 + 3 * iqr
+     monthly_totals["outlier_iqr"] = ~monthly_totals["doses_aplicadas"].between(lower_bound, upper_bound)
+-    report.municipios_mes_outliers = int(monthly_totals["outlier_iqr"].sum())
++    outlier_count = int(monthly_totals["outlier_iqr"].sum())
+ 
+     aggregated = aggregated.merge(
+         monthly_totals[["codigo_municipio", "ano_mes", "outlier_iqr"]],
+         on=["codigo_municipio", "ano_mes"],
+         how="left",
+     )
+-
++    return aggregated, outlier_count
++
++
++def _iter_csv_chunks_from_zip(byte_chunks):
++    """Descompacta um ZIP em streaming e devolve um iterador de DataFrames
++    (chunks) do primeiro membro .csv encontrado dentro dele."""
++    for file_name, _file_size, unzipped_chunks in stream_unzip(byte_chunks):
++        name = file_name.decode("utf-8", errors="replace")
++        if name.lower().endswith(".csv"):
++            reader = io.BufferedReader(_StreamUnzipReader(unzipped_chunks), buffer_size=1024 * 1024)
++            yield from pd.read_csv(
++                reader, sep=";", encoding="latin1", dtype=str, low_memory=False, chunksize=CHUNK_SIZE
++            )
++            return
++        # Membro que não nos interessa: precisa ser drenado (a API do
++        # stream_unzip exige consumir cada membro antes de passar ao próximo).
++        for _ in unzipped_chunks:
++            pass
++    raise RuntimeError("Nenhum CSV encontrado dentro do ZIP do PNI")
++
++
++def clean_month_stream(csv_chunk_iter, source_name: str) -> tuple[pd.DataFrame, CleaningReport]:
++    """Limpa e agrega um arquivo mensal do PNI, lendo-o em pedaços (streaming)."""
++    report = CleaningReport(arquivo=source_name)
++    resolved: dict | None = None
++    partial_aggregates: list[pd.DataFrame] = []
++
++    for chunk in csv_chunk_iter:
++        if resolved is None:
++            resolved = _resolve_columns(chunk)
++            report.colunas_resolvidas = resolved
++        partial_aggregates.append(_clean_and_aggregate_chunk(chunk, resolved, report))
++
++    if resolved is None or not partial_aggregates:
++        raise RuntimeError(f"{source_name}: arquivo vazio, nada para limpar")
++
++    aggregated, outlier_count = _combine_partial_aggregates(partial_aggregates, resolved)
++    report.municipios_mes_outliers = outlier_count
+     return aggregated, report
+ 
+ 
+@@ -253,19 +357,25 @@ def clean_and_upload(ano: int) -> list[CleaningReport]:
+         if not key.lower().endswith((".zip", ".csv")):
+             continue
+ 
+-        print(f"[limpando] {key}")
+-        body = s3.get_object(Bucket=BUCKET_RAW, Key=key)["Body"].read()
++        print(f"[limpando] {key} (streaming, {obj['Size'] / 1e9:.2f} GB no raw)")
+ 
+         if key.lower().endswith(".zip"):
+-            raw_df = read_monthly_zip(body)
++            byte_chunks = _s3_object_byte_chunks(s3, BUCKET_RAW, key)
++            csv_chunk_iter = _iter_csv_chunks_from_zip(byte_chunks)
+         else:
+-            raw_df = pd.read_csv(io.BytesIO(body), sep=";", encoding="latin1", dtype=str, low_memory=False)
++            body = s3.get_object(Bucket=BUCKET_RAW, Key=key)["Body"]
++            csv_chunk_iter = pd.read_csv(
++                body, sep=";", encoding="latin1", dtype=str, low_memory=False, chunksize=CHUNK_SIZE
++            )
+ 
+         try:
+-            cleaned_df, report = clean_month_dataframe(raw_df, source_name=Path(key).name)
++            cleaned_df, report = clean_month_stream(csv_chunk_iter, source_name=Path(key).name)
+         except KeyError as error:
+             print(f"  [FALHOU] {key}: {error}")
+             continue
++        except RuntimeError as error:
++            print(f"  [FALHOU] {key}: {error}")
++            continue
+ 
+         reports.append(report)
+         aggregated_frames.append(cleaned_df)
