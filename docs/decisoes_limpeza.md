@@ -1,4 +1,4 @@
-# Decisões de Limpeza e Pré-Processamento — Etapa 2
+# Decisões de Limpeza e Pré-Processamento  Etapa 2
 
 Registro das decisões tomadas na limpeza (raw → trusted → refined), com a
 justificativa de cada uma — pedido explícito do professor no material da
