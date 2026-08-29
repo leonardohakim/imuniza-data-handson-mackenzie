@@ -23,7 +23,7 @@ A proposta busca transformar dados públicos, hoje dispersos e pouco explorados,
 
 - **DATASUS / TabNet (SI-PNI)**: Sistema de Informações do Programa Nacional de Imunizações
 - **OpenDataSUS**: bases granulares de doses aplicadas por município, período e faixa etária
-- **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, renda, IDH)
+- **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
 
 ## Estrutura do Projeto
 
@@ -42,10 +42,12 @@ imuniza-data-handson-mackenzie/
 │   ├── validate_setup.py        # Healthcheck do MinIO e das fontes externas
 │   ├── ingestion/                # Etapa 1: coleta (fontes -> bucket "raw")
 │   │   ├── download_ibge.py
+│   │   ├── download_pib.py
 │   │   ├── download_pni.py
 │   │   └── inspect_pni.py
 │   └── cleaning/                  # Etapa 2: limpeza (bucket "raw" -> "trusted" -> "refined")
 │       ├── clean_ibge.py
+│       ├── clean_pib.py
 │       ├── clean_pni.py
 │       └── build_coverage.py
 ├── tests/                        # Testes automatizados (pytest)
@@ -87,6 +89,7 @@ python -m src.validate_setup  # confere MinIO + fontes externas, cria os buckets
 
 ```bash
 python -m src.ingestion.download_ibge --ano 2024
+python -m src.ingestion.download_pib --ano 2023   # PIB municipal (variável socioeconômica); série vai até 2023
 python -m src.ingestion.download_pni --ano 2025
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema real antes de limpar
 ```
@@ -95,8 +98,9 @@ python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema rea
 
 ```bash
 python -m src.cleaning.clean_ibge --ano 2024
+python -m src.cleaning.clean_pib --ano 2023
 python -m src.cleaning.clean_pni --ano 2025
-python -m src.cleaning.build_coverage --ano 2025
+python -m src.cleaning.build_coverage --ano 2025   # cruza PIB de 2023 automaticamente (--ano-pib, default 2023)
 jupyter notebook notebooks/02_analise_exploratoria.ipynb
 ```
 

@@ -75,3 +75,48 @@ def test_soma_multiplas_linhas_de_dose_do_mesmo_municipio_antes_do_cruzamento():
     coverage = compute_coverage(_populacao(), doses)
 
     assert coverage.set_index("codigo_municipio").loc["1100015", "doses_aplicadas"] == 600
+
+
+# --- PIB per capita (opcional) --------------------------------------------
+
+def _doses_minimas():
+    return pd.DataFrame({
+        "codigo_municipio": ["110001"],
+        "doses_aplicadas": [10],
+    })
+
+
+def test_sem_pib_nao_adiciona_colunas_de_pib():
+    coverage = compute_coverage(_populacao(), _doses_minimas(), pib=None)
+
+    assert "pib_mil_reais" not in coverage.columns
+    assert "pib_per_capita_reais" not in coverage.columns
+
+
+def test_pib_per_capita_e_calculado_corretamente():
+    # PIB em Mil Reais; per capita = pib_mil_reais * 1000 / populacao.
+    pib = pd.DataFrame({
+        "codigo_municipio": ["1100015"],  # 7 dígitos, mesmo código do IBGE (sem conversão)
+        "pib_mil_reais": [22787.0],  # escolhido para dar exatamente 1000/hab
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), pib=pib)
+
+    alta_floresta = coverage.set_index("codigo_municipio").loc["1100015"]
+    assert alta_floresta["pib_mil_reais"] == 22787.0
+    assert alta_floresta["pib_per_capita_reais"] == 1000.0
+
+
+def test_municipio_sem_pib_fica_com_nan_nao_com_zero():
+    # Diferente de doses_aplicadas (onde ausência = 0, um sinal real),
+    # ausência de PIB é lacuna de dado: não deve virar 0 artificialmente.
+    pib = pd.DataFrame({
+        "codigo_municipio": ["1100015"],
+        "pib_mil_reais": [22787.0],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), pib=pib)
+
+    ariquemes = coverage.set_index("codigo_municipio").loc["1100023"]
+    assert pd.isna(ariquemes["pib_mil_reais"])
+    assert pd.isna(ariquemes["pib_per_capita_reais"])

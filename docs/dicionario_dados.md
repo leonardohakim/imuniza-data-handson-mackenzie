@@ -25,6 +25,28 @@ Resposta bruta da API SIDRA (`/values/t/6579/n6/all/v/9324/p/{ano}`), tabela
 rótulos que a API SIDRA retorna por padrão (`/h/y`) antes dos dados reais.
 Ver `src/cleaning/clean_ibge.py` para o tratamento.
 
+### `raw/ibge/pib/ano={ano}/pib_municipios.csv`
+
+Resposta bruta da API SIDRA (`/values/t/5938/n6/all/v/37/p/{ano}`), tabela
+5938 (PIB total a preços correntes, variável 37, em Mil Reais), nível
+município. Ver `docs/decisoes_limpeza.md` (seção 3) para por que essa
+tabela foi escolhida em vez da 6784.
+
+| Coluna | Descrição |
+|---|---|
+| `NC` / `NN` | Código / nome do nível territorial (6 = Município) |
+| `MC` / `MN` | Código / nome da unidade de medida (Mil Reais) |
+| `V` | Valor do PIB total a preços correntes |
+| `D1C` / `D1N` | Código IBGE (7 dígitos) / nome do município |
+| `D2C` / `D2N` | Código / nome da variável (sempre 37, "PIB a preços correntes") |
+| `D3C` / `D3N` | Código / nome do ano de referência |
+
+**Diferença de schema em relação à tabela de população**: aqui `D2` é a
+variável, não o ano (a Tabela 5938 tem várias variáveis disponíveis, mesmo
+pedindo só a 37 na ingestão); o ano fica em `D3`. A primeira linha de dados
+também pode vir com o mesmo problema da linha de metadados do SIDRA (ver
+seção de população acima); tratamento em `src/cleaning/clean_pib.py`.
+
 ### `raw/pni/ano={ano}/<nome_do_arquivo>.zip`
 
 CSV mensal de doses aplicadas do PNI (formato original do OpenDataSUS: `;`
@@ -59,6 +81,18 @@ DATASUS/RNDS usado em outros datasets de vacinação):
 Também é gravado `_cleaning_report.txt` na mesma pasta, com a contagem de
 linhas removidas e por quê (ver `docs/decisoes_limpeza.md`).
 
+### `trusted/ibge/pib/ano={ano}/pib_municipios.parquet`
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `codigo_municipio` | string (7 dígitos) | Código IBGE do município |
+| `municipio` | string | Nome do município (UF) |
+| `ano` | string | Ano de referência do PIB (série IBGE: 2002-2023) |
+| `pib_mil_reais` | float64 | PIB total a preços correntes, em Mil Reais |
+
+Também é gravado `_cleaning_report.txt` na mesma pasta, no mesmo formato do
+relatório de limpeza da população.
+
 ### `trusted/pni/ano={ano}/<nome_do_arquivo>.parquet` e `doses_aplicadas_consolidado.parquet`
 
 Dado já **agregado** (uma linha do CSV bruto = uma dose aplicada; aqui já
@@ -87,3 +121,5 @@ Uma linha por município, IBGE + PNI já cruzados:
 | `populacao` | int64 | População estimada (IBGE) |
 | `doses_aplicadas` | int64 | Total de doses aplicadas no ano (PNI); `0` quando não há registro |
 | `cobertura_doses_por_100_habitantes` | float | `doses_aplicadas / populacao * 100`; ver limitação de interpretação em `src/cleaning/build_coverage.py` (é um proxy de intensidade de vacinação, não de % de pessoas efetivamente imunizadas, por causa de esquemas multidose) |
+| `pib_mil_reais` | float (opcional) | PIB total do município em Mil Reais, ano de referência 2023 (`--ano-pib`, ver `docs/decisoes_limpeza.md` seção 3); `NaN` quando o município não tem PIB no trusted, e a coluna toda fica ausente se `clean_pib.py` ainda não rodou |
+| `pib_per_capita_reais` | float (opcional) | `pib_mil_reais * 1000 / populacao`, calculado em `build_coverage.py`; mesma condição de ausência da coluna acima |

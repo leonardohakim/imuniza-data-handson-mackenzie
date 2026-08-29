@@ -44,11 +44,20 @@ def load_parquet(s3, bucket: str, key: str) -> pd.DataFrame:
     return pd.read_parquet(io.BytesIO(obj["Body"].read()))
 
 
-def compute_coverage(populacao: pd.DataFrame, doses: pd.DataFrame) -> pd.DataFrame:
+def compute_coverage(
+    populacao: pd.DataFrame, doses: pd.DataFrame, pib: pd.DataFrame | None = None
+) -> pd.DataFrame:
     """Junta população (IBGE, trusted) + doses (PNI, trusted) e calcula a
     métrica de cobertura. Função pura (sem I/O) para ser testável isoladamente
     — ver testes em `tests/test_build_coverage.py`, que cobrem exatamente o
-    bug real encontrado aqui (ver decisão abaixo)."""
+    bug real encontrado aqui (ver decisão abaixo).
+
+    `pib` é opcional: quando informado (trusted, ver `clean_pib.py`), adiciona
+    `pib_mil_reais` e `pib_per_capita_reais` ao resultado, para a análise de
+    correlação socioeconômica. O cruzamento aqui é direto por
+    `codigo_municipio` de 7 dígitos (sem a conversão de 6/7 dígitos que o PNI
+    exige), porque o PIB já vem do IBGE, mesmo sistema de código da
+    população."""
     doses_por_municipio = (
         doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
     )
@@ -80,10 +89,26 @@ def compute_coverage(populacao: pd.DataFrame, doses: pd.DataFrame) -> pd.DataFra
         coverage["doses_aplicadas"] / coverage["populacao"] * 100
     ).round(2)
 
+    if pib is not None:
+        pib_por_municipio = pib[["codigo_municipio", "pib_mil_reais"]].drop_duplicates(
+            subset=["codigo_municipio"]
+        )
+        coverage = coverage.merge(pib_por_municipio, on="codigo_municipio", how="left")
+
+        # Decisão: município sem PIB no trusted fica com NaN, não 0 — ao
+        # contrário de `doses_aplicadas` (onde 0 é um sinal real: "nenhuma
+        # dose registrada"), a ausência de PIB é lacuna de dado (ex.:
+        # município criado depois do ano de referência da tabela), não uma
+        # economia zerada; zerar aqui fabricaria um valor incorreto para a
+        # análise de correlação. Ver `docs/decisoes_limpeza.md`.
+        coverage["pib_per_capita_reais"] = (
+            coverage["pib_mil_reais"] * 1000 / coverage["populacao"]
+        ).round(2)
+
     return coverage
 
 
-def build_coverage(ano: int) -> pd.DataFrame:
+def build_coverage(ano: int, ano_pib: int | None = None) -> pd.DataFrame:
     s3 = get_s3_client()
 
     populacao = load_parquet(
@@ -93,7 +118,29 @@ def build_coverage(ano: int) -> pd.DataFrame:
         s3, BUCKET_TRUSTED, f"pni/ano={ano}/doses_aplicadas_consolidado.parquet"
     )
 
-    coverage = compute_coverage(populacao, doses)
+    # PIB municipal tem seu próprio ano de referência, independente do ano
+    # da cobertura vacinal: a série do IBGE (Tabela 5938) vai só até 2023,
+    # com o dado sempre saindo com ~2 anos de atraso (não existe "PIB de
+    # 2025" publicado ainda). Decisão: cruzar com o PIB mais recente
+    # disponível (`ano_pib`, default 2023) em vez de exigir o mesmo ano da
+    # cobertura — ver `docs/decisoes_limpeza.md`. Se o trusted de PIB ainda
+    # não tiver sido processado (`clean_pib.py` não rodou), a coluna de PIB
+    # fica de fora do refinado em vez de quebrar o pipeline inteiro.
+    ano_pib = ano_pib or 2023
+    pib = None
+    try:
+        pib = load_parquet(
+            s3, BUCKET_TRUSTED, f"ibge/pib/ano={ano_pib}/pib_municipios.parquet"
+        )
+    except s3.exceptions.NoSuchKey:
+        print(
+            f"[AVISO] PIB municipal trusted não encontrado para {ano_pib} "
+            f"(rode 'python -m src.cleaning.clean_pib --ano {ano_pib}' primeiro "
+            "se quiser incluir PIB per capita no dataset refinado). "
+            "Prosseguindo sem essa coluna."
+        )
+
+    coverage = compute_coverage(populacao, doses, pib)
 
     # Municípios com população no IBGE mas nenhuma dose registrada no PNI
     # para o ano: mantemos a linha (cobertura = 0%) em vez de descartar —
@@ -126,4 +173,11 @@ if __name__ == "__main__":
         description="Constrói a métrica de cobertura vacinal por município (trusted -> refined)"
     )
     parser.add_argument("--ano", type=int, default=2025)
-    build_coverage(parser.parse_args().ano)
+    parser.add_argument(
+        "--ano-pib",
+        type=int,
+        default=None,
+        help="Ano do PIB municipal a cruzar (default: 2023, o mais recente da série do IBGE)",
+    )
+    args = parser.parse_args()
+    build_coverage(args.ano, args.ano_pib)

@@ -29,7 +29,19 @@ ajudará na reprodutibilidade e na rastreabilidade").
 | Agregar para `município × mês (× vacina)` já na limpeza, em vez de manter uma linha por dose | Reduz drasticamente o volume de dados (o objetivo do projeto é município, não paciente individual) e evita manter dado de nível de paciente além do necessário. |
 | Sinalizar município-mês fora de `[Q1 − 3·IQR, Q3 + 3·IQR]` como outlier, **sem remover** | Um valor muito alto pode ser um polo regional de vacinação (município que atende vizinhos), informação relevante para o objetivo do projeto (priorizar ações), não ruído a descartar. A decisão de remover ou não fica para a análise exploratória, com a coluna `outlier_iqr` disponível para essa investigação. |
 
-## 3. Métrica de cobertura vacinal (refined)
+## 3. PIB municipal (IBGE): variável socioeconômica
+
+| Decisão | Justificativa |
+|---|---|
+| Usar PIB per capita municipal como variável socioeconômica, em vez de renda ou IDH | Renda per capita: os dados mais recentes que o IBGE divulga por essa métrica (PNAD Contínua) só descem a nível de Brasil/UF, não de município, então não dá para cruzar com a cobertura por município. IDH municipal (IDHM): só existe calculado para 2010 (Atlas do Desenvolvimento Humano/PNUD, plataforma diferente do IBGE/SIDRA, sem atualização com o Censo 2022); cruzar cobertura de 2025 com um indicador de 15 anos atrás foi considerado defasado demais. PIB per capita municipal (Tabela 5938 do SIDRA) é oficial, municipal, e tem série anual até 2023: o mais atual dos três disponível hoje. |
+| Escolher a Tabela 5938 do SIDRA, não a 6784 | A 6784 parecia ser "PIB dos Municípios" pelo nome, mas a API rejeita consulta por município nela (`Parâmetro N6 (Nível territorial) incompatível com a tabela`): ela só existe a nível Brasil. Confirmado consultando `/metadados` das duas tabelas antes de escrever qualquer código de ingestão, mesmo princípio de "inspecionar antes de assumir" já usado no PNI (`inspect_pni.py`). |
+| Calcular PIB per capita manualmente (`pib_mil_reais * 1000 / populacao`), em vez de usar uma variável "per capita" pronta | A Tabela 5938 só tem PIB total (variável 37, em Mil Reais) a nível de município; as variáveis "per capita" prontas do SIDRA existem só a outros níveis territoriais. Como já temos a população (IBGE, mesma fonte) coletada, calcular o per capita nós mesmos evita depender de mais uma tabela e mantém o numerador/denominador com a mesma origem de dado. |
+| Cruzar PIB e população/cobertura direto pelo código de 7 dígitos, sem a conversão de 6/7 dígitos que o PNI exige | O PIB vem do próprio IBGE (Tabela 5938), mesmo sistema de código da população; não é o código DATASUS de 6 dígitos do PNI. Aplicar a conversão aqui seria um erro (e um bug bem parecido com o que já corrigimos na seção 2, mas ao contrário: truncar um código que já está certo). |
+| Usar o ano de PIB mais recente disponível (2023) para cruzar com a cobertura de 2025, em vez de exigir o mesmo ano | Dado de PIB municipal sempre sai com atraso (a série do IBGE vai só até 2023, não existe "PIB de 2025" publicado); exigir o mesmo ano deixaria essa variável sempre vazia. `build_coverage.py` recebe o ano do PIB como parâmetro separado (`--ano-pib`, default 2023) do ano da cobertura (`--ano`). Essa defasagem de ~2 anos entre as duas fontes deve ficar explícita em qualquer gráfico/relatório que use `pib_per_capita_reais`. |
+| Município sem PIB no trusted fica com `NaN`, não `0`, no dataset refinado | Diferente da decisão equivalente para `doses_aplicadas` (onde `0` é um sinal real: "nenhuma dose registrada"), a ausência de PIB é lacuna de dado (ex.: município sem registro naquele ano da série), não uma economia zerada; preencher com `0` fabricaria um valor incorreto para qualquer análise de correlação feita com essa coluna. |
+| `build_coverage.py` prossegue sem a coluna de PIB (em vez de falhar) quando o trusted de PIB ainda não foi processado | PIB é uma variável adicional, não uma dependência obrigatória da métrica central do projeto (cobertura vacinal). Uma equipe rodando só `clean_ibge.py` + `clean_pni.py` (sem `clean_pib.py`) ainda consegue gerar o dataset refinado principal; a coluna de PIB só aparece quando `clean_pib.py` já rodou para o `--ano-pib` pedido. |
+
+## 4. Métrica de cobertura vacinal (refined)
 
 | Decisão | Justificativa |
 |---|---|
@@ -46,11 +58,15 @@ ajudará na reprodutibilidade e na rastreabilidade").
   brutos não ficam armazenados em `raw`: podem ser rebaixados a qualquer
   momento do OpenDataSUS com `python -m src.ingestion.download_pni --ano
   2025` (por mês, um de cada vez, é o que esse script já faz).
-- As fontes de renda/IDH (IBGE/SIDRA) citadas no README como variável
-  socioeconômica ainda não têm um script de ingestão; só população foi
-  coletada até aqui. Precisa de uma decisão: adicionar a coleta (outra
-  tabela SIDRA) antes da análise de correlação, ou ajustar o escopo da
-  Etapa 2 para cobertura vs. população/densidade apenas.
+- ~~As fontes de renda/IDH (IBGE/SIDRA) citadas no README como variável
+  socioeconômica ainda não têm um script de ingestão~~ (**resolvido, com
+  variável ajustada**): renda per capita (PNAD Contínua) só existe a nível
+  Brasil/UF, e IDH municipal só existe defasado (2010, plataforma diferente
+  do IBGE/SIDRA), então nenhum dos dois serve para cruzar com cobertura por
+  município em 2025. Coletamos **PIB per capita municipal** (Tabela 5938 do
+  SIDRA, ano de referência 2023) como variável socioeconômica no lugar
+  (`download_pib.py` + `clean_pib.py`); ver seção 3 acima para a
+  justificativa completa dessa troca.
 - Este documento e `docs/dicionario_dados.md` foram inicialmente escritos
   sem acesso aos dados reais do PNI (rede bloqueada no ambiente usado para
   desenvolver o pipeline). Já validamos o schema real rodando `clean_pni.py`
