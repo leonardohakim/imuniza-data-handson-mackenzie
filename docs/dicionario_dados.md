@@ -21,7 +21,7 @@ Resposta bruta da API SIDRA (`/values/t/6579/n6/all/v/9324/p/{ano}`), tabela
 | `D1C` / `D1N` | Código IBGE (7 dígitos) / nome do município |
 | `D2C` / `D2N` | Código / nome do ano de referência |
 
-⚠️ **A primeira linha de dados deste CSV não é um município** — é a linha de
+ **A primeira linha de dados deste CSV não é um município** — é a linha de
 rótulos que a API SIDRA retorna por padrão (`/h/y`) antes dos dados reais.
 Ver `src/cleaning/clean_ibge.py` para o tratamento.
 
