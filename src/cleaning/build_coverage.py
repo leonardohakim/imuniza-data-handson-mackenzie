@@ -44,16 +44,11 @@ def load_parquet(s3, bucket: str, key: str) -> pd.DataFrame:
     return pd.read_parquet(io.BytesIO(obj["Body"].read()))
 
 
-def build_coverage(ano: int) -> pd.DataFrame:
-    s3 = get_s3_client()
-
-    populacao = load_parquet(
-        s3, BUCKET_TRUSTED, f"ibge/populacao/ano={ano}/populacao_municipios.parquet"
-    )
-    doses = load_parquet(
-        s3, BUCKET_TRUSTED, f"pni/ano={ano}/doses_aplicadas_consolidado.parquet"
-    )
-
+def compute_coverage(populacao: pd.DataFrame, doses: pd.DataFrame) -> pd.DataFrame:
+    """Junta população (IBGE, trusted) + doses (PNI, trusted) e calcula a
+    métrica de cobertura. Função pura (sem I/O) para ser testável isoladamente
+    — ver testes em `tests/test_build_coverage.py`, que cobrem exatamente o
+    bug real encontrado aqui (ver decisão abaixo)."""
     doses_por_municipio = (
         doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
     )
@@ -81,15 +76,30 @@ def build_coverage(ano: int) -> pd.DataFrame:
     coverage = coverage.drop(columns=["codigo_municipio_datasus", "codigo_municipio_pni"], errors="ignore")
     coverage["doses_aplicadas"] = coverage["doses_aplicadas"].fillna(0).astype("int64")
 
+    coverage["cobertura_doses_por_100_habitantes"] = (
+        coverage["doses_aplicadas"] / coverage["populacao"] * 100
+    ).round(2)
+
+    return coverage
+
+
+def build_coverage(ano: int) -> pd.DataFrame:
+    s3 = get_s3_client()
+
+    populacao = load_parquet(
+        s3, BUCKET_TRUSTED, f"ibge/populacao/ano={ano}/populacao_municipios.parquet"
+    )
+    doses = load_parquet(
+        s3, BUCKET_TRUSTED, f"pni/ano={ano}/doses_aplicadas_consolidado.parquet"
+    )
+
+    coverage = compute_coverage(populacao, doses)
+
     # Municípios com população no IBGE mas nenhuma dose registrada no PNI
     # para o ano: mantemos a linha (cobertura = 0%) em vez de descartar —
     # "sem dado de vacinação" é, em si, um sinal relevante para o objetivo
     # do projeto (identificar áreas com baixa cobertura).
     sem_dados_pni = coverage["doses_aplicadas"].eq(0).sum()
-
-    coverage["cobertura_doses_por_100_habitantes"] = (
-        coverage["doses_aplicadas"] / coverage["populacao"] * 100
-    ).round(2)
 
     outliers_baixos = coverage.nsmallest(10, "cobertura_doses_por_100_habitantes")
     outliers_altos = coverage.nlargest(10, "cobertura_doses_por_100_habitantes")
