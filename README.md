@@ -103,7 +103,7 @@ Decisões de limpeza (o quê e por quê) estão documentadas em
 [`docs/decisoes_limpeza.md`](docs/decisoes_limpeza.md); o schema de cada
 camada de dado está em [`docs/dicionario_dados.md`](docs/dicionario_dados.md).
 
-⚠️ Os nomes de coluna do CSV do PNI usados em `src/cleaning/clean_pni.py`
+Os nomes de coluna do CSV do PNI usados em `src/cleaning/clean_pni.py`
 foram definidos sem acesso aos dados reais (ambiente de desenvolvimento sem
 rede liberada para o DATASUS). Rode `inspect_pni.py` primeiro e ajuste
 `COLUMN_CANDIDATES` nesse arquivo se os nomes reais divergirem.
