@@ -58,7 +58,27 @@ def build_coverage(ano: int) -> pd.DataFrame:
         doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
     )
 
-    coverage = populacao.merge(doses_por_municipio, on="codigo_municipio", how="left")
+    # O PNI/DATASUS usa o código de município de 6 dígitos (sem o dígito
+    # verificador do IBGE); o IBGE usa 7 dígitos. Confirmado contra os dados
+    # reais: cruzar direto por `codigo_municipio` não casava nada (os dois
+    # "pareciam" ter 7 dígitos, mas eram sistemas de código diferentes —
+    # `clean_pni.py` zero-preenchia o código de 6 dígitos do DATASUS até 7,
+    # o que nunca corresponde ao código IBGE real). Os 6 primeiros dígitos
+    # do código IBGE identificam o mesmo município que o código DATASUS; o
+    # 7º dígito do IBGE é só um dígito verificador, não informação adicional
+    # — truncar para 6 dígitos não perde nada para fins de cruzamento. Ver
+    # `docs/decisoes_limpeza.md`.
+    populacao = populacao.copy()
+    populacao["codigo_municipio_datasus"] = populacao["codigo_municipio"].str[:6]
+
+    coverage = populacao.merge(
+        doses_por_municipio,
+        left_on="codigo_municipio_datasus",
+        right_on="codigo_municipio",
+        how="left",
+        suffixes=("", "_pni"),
+    )
+    coverage = coverage.drop(columns=["codigo_municipio_datasus", "codigo_municipio_pni"], errors="ignore")
     coverage["doses_aplicadas"] = coverage["doses_aplicadas"].fillna(0).astype("int64")
 
     # Municípios com população no IBGE mas nenhuma dose registrada no PNI

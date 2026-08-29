@@ -15,9 +15,11 @@ candidatos em `COLUMN_CANDIDATES` abaixo — é o único lugar que precisa mudar
 
 Decisões de limpeza (documentadas)
 ------------------------------------------------------------------
-- Linhas sem código de município válido (7 dígitos) são descartadas: sem
-  município não há como juntar com a população do IBGE nem calcular
-  cobertura.
+- Linhas sem código de município válido (6 dígitos — código DATASUS/SUS,
+  sem o dígito verificador que o IBGE usa) são descartadas: sem município
+  não há como juntar com a população do IBGE nem calcular cobertura. O
+  cruzamento com o IBGE (7 dígitos) é feito truncando o código do IBGE
+  para 6 dígitos em `build_coverage.py` — ver `docs/decisoes_limpeza.md`.
 - Linhas sem data de aplicação válida são descartadas: não dá para agregar
   por mês sem data.
 - Duplicatas exatas (mesma linha completa) são removidas — indicam erro de
@@ -265,10 +267,19 @@ def _clean_and_aggregate_chunk(chunk: pd.DataFrame, resolved: dict, report: Clea
         original: logical for logical, original in resolved.items() if original is not None
     })
 
+    # `co_municipio_paciente` traz o código de município do DATASUS/SUS, que
+    # tem 6 dígitos — NÃO o código IBGE de 7 dígitos (o 7º dígito do IBGE é
+    # só um dígito verificador, que o DATASUS não usa). Confirmado contra os
+    # dados reais: preencher com zfill(7) aqui (suposição da hipótese
+    # original, escrita sem acesso aos dados) juntava um zero à esquerda a
+    # um código de 6 dígitos, produzindo algo que parecia um código IBGE
+    # válido mas nunca batia com nenhum município real no cruzamento com a
+    # população — todo o dataset refinado saía com 0 doses. Ver decisão
+    # correspondente em `docs/decisoes_limpeza.md`.
     df["codigo_municipio"] = (
-        df["codigo_municipio"].astype(str).str.extract(r"(\d+)", expand=False).str.zfill(7)
+        df["codigo_municipio"].astype(str).str.extract(r"(\d+)", expand=False).str.zfill(6)
     )
-    municipio_invalido = ~df["codigo_municipio"].str.match(r"^\d{7}$", na=False)
+    municipio_invalido = ~df["codigo_municipio"].str.match(r"^\d{6}$", na=False)
     report.municipio_invalido += int(municipio_invalido.sum())
     df = df.loc[~municipio_invalido]
 
