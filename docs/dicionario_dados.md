@@ -21,7 +21,7 @@ Resposta bruta da API SIDRA (`/values/t/6579/n6/all/v/9324/p/{ano}`), tabela
 | `D1C` / `D1N` | Código IBGE (7 dígitos) / nome do município |
 | `D2C` / `D2N` | Código / nome do ano de referência |
 
- **A primeira linha de dados deste CSV não é um município** — é a linha de
+**A primeira linha de dados deste CSV não é um município**: é a linha de
 rótulos que a API SIDRA retorna por padrão (`/h/y`) antes dos dados reais.
 Ver `src/cleaning/clean_ibge.py` para o tratamento.
 
@@ -30,7 +30,7 @@ Ver `src/cleaning/clean_ibge.py` para o tratamento.
 CSV mensal de doses aplicadas do PNI (formato original do OpenDataSUS: `;`
 como separador, encoding `latin1`), um arquivo por mês, dentro de um ZIP.
 
-As colunas exatas variam por ano/dataset — **confirme com
+As colunas exatas variam por ano/dataset; **confirme com
 `python -m src.ingestion.inspect_pni --ano <ano> --mes <mes>`** antes de
 assumir qualquer nome. Colunas esperadas (nomenclatura provável, no padrão
 DATASUS/RNDS usado em outros datasets de vacinação):
@@ -71,7 +71,7 @@ individual):
 | `ano_mes` | string (`YYYY-MM`) | Mês de aplicação |
 | `vacina_nome` | string | Nome/tipo da vacina (quando a coluna existe no raw) |
 | `doses_aplicadas` | int64 | Contagem de doses naquele município/mês/vacina |
-| `outlier_iqr` | bool | `True` se o total do município naquele mês está fora de `[Q1 - 3·IQR, Q3 + 3·IQR]` da distribuição de todos os municípios no mês — **sinalizado, não removido** (ver decisões de limpeza) |
+| `outlier_iqr` | bool | `True` se o total do município naquele mês está fora de `[Q1 - 3·IQR, Q3 + 3·IQR]` da distribuição de todos os municípios no mês: **sinalizado, não removido** (ver decisões de limpeza) |
 
 ## Camada `refined` (pronto para análise/ML)
 
@@ -86,4 +86,4 @@ Uma linha por município, IBGE + PNI já cruzados:
 | `ano` | string | Ano de referência |
 | `populacao` | int64 | População estimada (IBGE) |
 | `doses_aplicadas` | int64 | Total de doses aplicadas no ano (PNI); `0` quando não há registro |
-| `cobertura_doses_por_100_habitantes` | float | `doses_aplicadas / populacao * 100` — ver limitação de interpretação em `src/cleaning/build_coverage.py` (é um proxy de intensidade de vacinação, não de % de pessoas efetivamente imunizadas, por causa de esquemas multidose) |
+| `cobertura_doses_por_100_habitantes` | float | `doses_aplicadas / populacao * 100`; ver limitação de interpretação em `src/cleaning/build_coverage.py` (é um proxy de intensidade de vacinação, não de % de pessoas efetivamente imunizadas, por causa de esquemas multidose) |
