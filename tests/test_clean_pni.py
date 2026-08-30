@@ -9,6 +9,7 @@ quebraram de verdade ao rodar contra os dados reais do PNI:
    `docs/decisoes_limpeza.md`, seção 2).
 """
 
+import datetime
 import io
 import zipfile
 
@@ -20,6 +21,7 @@ from src.cleaning.clean_pni import (
     _clean_and_aggregate_chunk,
     _iter_csv_chunks_from_zip,
     clean_month_stream,
+    meses_faltantes,
     parse_application_dates,
     resolve_column,
 )
@@ -191,3 +193,43 @@ def test_iter_csv_chunks_from_zip_le_csv_dentro_de_zip_em_memoria():
 
     assert len(full_df) == 2
     assert set(full_df["co_municipio_paciente"]) == {"110001", "355030"}
+
+
+# --- meses_faltantes -----------------------------------------------------
+#
+# Regressão direta do incidente real: um consolidado com só 7 dos 12 meses
+# foi gravado sem nenhum erro ou aviso (ver "Pendências conhecidas" em
+# `docs/decisoes_limpeza.md`). `hoje` é injetado para o teste não depender
+# da data em que é rodado.
+
+def test_ano_passado_exige_os_12_meses():
+    presentes = [f"2020-{m:02d}" for m in [1, 2, 3, 4, 5, 6, 8]]  # falta jul, set-dez
+
+    faltando = meses_faltantes(2020, presentes, hoje=datetime.date(2026, 1, 1))
+
+    assert faltando == ["2020-07", "2020-09", "2020-10", "2020-11", "2020-12"]
+
+
+def test_ano_passado_completo_nao_acusa_nada_faltando():
+    presentes = [f"2020-{m:02d}" for m in range(1, 13)]
+
+    faltando = meses_faltantes(2020, presentes, hoje=datetime.date(2026, 1, 1))
+
+    assert faltando == []
+
+
+def test_ano_corrente_so_cobra_ate_o_mes_atual():
+    # Em maio de 2026, não faz sentido cobrar jun-dez/2026: ainda não existem.
+    presentes = ["2026-01", "2026-02", "2026-03"]
+
+    faltando = meses_faltantes(2026, presentes, hoje=datetime.date(2026, 5, 15))
+
+    assert faltando == ["2026-04", "2026-05"]
+
+
+def test_meses_presentes_fora_de_ordem_nao_afeta_o_resultado():
+    presentes = ["2020-05", "2020-01", "2020-03", "2020-02", "2020-04"]
+
+    faltando = meses_faltantes(2020, presentes, hoje=datetime.date(2020, 5, 31))
+
+    assert faltando == []

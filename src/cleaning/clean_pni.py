@@ -55,6 +55,7 @@ parte ainda cai no mesmo pedaço.
 """
 
 import argparse
+import datetime
 import io
 import os
 from dataclasses import dataclass, field
@@ -370,6 +371,28 @@ def clean_month_stream(csv_chunk_iter, source_name: str) -> tuple[pd.DataFrame, 
     return aggregated, report
 
 
+def meses_faltantes(ano: int, ano_mes_presentes, hoje: datetime.date | None = None) -> list[str]:
+    """Compara os meses (`YYYY-MM`) presentes num consolidado com os meses
+    esperados para `ano`, e retorna os que faltam.
+
+    Existe para transformar em aviso explícito um bug real que já aconteceu
+    neste projeto: `clean_and_upload` consolidava silenciosamente qualquer
+    subconjunto de meses presente no `raw` no momento da execução (7 de 12
+    meses, sem erro nenhum, quando os outros ZIPs já tinham sido apagados
+    por falta de espaço). Ver "Pendências conhecidas" em
+    `docs/decisoes_limpeza.md`. Função pura (sem I/O), testável isoladamente
+    — ver `tests/test_clean_pni.py`.
+
+    Para o ano corrente, só cobra meses até o mês atual (não faz sentido
+    exigir dezembro de um ano ainda em andamento); para anos passados,
+    exige os 12 meses. `hoje` é injetável só para teste determinístico.
+    """
+    hoje = hoje or datetime.date.today()
+    ultimo_mes_esperado = 12 if ano < hoje.year else hoje.month
+    esperados = {f"{ano}-{mes:02d}" for mes in range(1, ultimo_mes_esperado + 1)}
+    return sorted(esperados - set(ano_mes_presentes))
+
+
 def clean_and_upload(ano: int) -> list[CleaningReport]:
     s3 = get_s3_client()
     prefix = f"pni/ano={ano}/"
@@ -424,6 +447,20 @@ def clean_and_upload(ano: int) -> list[CleaningReport]:
 
     if aggregated_frames:
         consolidated = pd.concat(aggregated_frames, ignore_index=True)
+
+        ano_mes_presentes = sorted(consolidated["ano_mes"].unique())
+        print(f"[INFO] Meses presentes no consolidado: {ano_mes_presentes}")
+        faltando = meses_faltantes(ano, ano_mes_presentes)
+        if faltando:
+            print(
+                f"[AVISO] Consolidado incompleto: faltam os meses {faltando}. "
+                "Isso já aconteceu de verdade neste projeto (ver 'Pendências "
+                "conhecidas' em docs/decisoes_limpeza.md) quando os ZIPs "
+                "brutos desses meses não estavam mais em s3://raw/pni/ no "
+                "momento da limpeza. Rode download_pni.py para os meses "
+                "faltantes antes de confiar neste consolidado."
+            )
+
         buffer = io.BytesIO()
         consolidated.to_parquet(buffer, index=False)
         buffer.seek(0)

@@ -25,6 +25,7 @@ from src.cleaning.clean_pni import (
     _iter_csv_chunks_from_zip,
     clean_month_stream,
     get_s3_client,
+    meses_faltantes,
 )
 from src.ingestion.download_pni import (
     download_to_temp,
@@ -104,6 +105,18 @@ def main():
         frames.append(pd.read_parquet(io.BytesIO(obj["Body"].read())))
 
     consolidated = pd.concat(frames, ignore_index=True)
+
+    ano_mes_presentes = sorted(consolidated["ano_mes"].unique())
+    print(f"[info] Meses presentes no consolidado: {ano_mes_presentes}")
+    faltando = meses_faltantes(ANO, ano_mes_presentes)
+    if faltando:
+        print(
+            f"[AVISO] Consolidado incompleto: faltam os meses {faltando}. "
+            "Confira se todos os meses do ano foram baixados com sucesso "
+            "(ver a lista de 'falhou' acima) antes de confiar neste "
+            "consolidado."
+        )
+
     buffer = io.BytesIO()
     consolidated.to_parquet(buffer, index=False)
     buffer.seek(0)
