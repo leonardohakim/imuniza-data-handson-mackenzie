@@ -47,6 +47,13 @@ justificativa de cada uma:
 | Manter municípios com população no IBGE mas 0 doses no PNI (em vez de excluir) | "Sem dado de vacinação" é, em si, um sinal relevante para o objetivo do projeto (identificar áreas de baixa cobertura para priorizar ações): excluir esses municípios esconderia exatamente o que o projeto quer encontrar. Com o ano completo de 2025 processado, isso passou a ser só uma salvaguarda teórica: nenhum dos 5.571 municípios ficou com 0 doses no resultado final. |
 | Cruzar população (IBGE, 7 dígitos) e doses (DATASUS, 6 dígitos) truncando o código IBGE para 6 dígitos, em vez de comparar direto | Os dois sistemas de código não são o mesmo (ver decisão equivalente na seção 2). O código de município final na camada refined continua sendo o de 7 dígitos do IBGE (mantido por ser o identificador padrão e mais reconhecível); os 6 dígitos são usados só como chave de cruzamento, descartada depois do merge. |
 
+## 5. Integração contínua (CI)
+
+| Decisão | Justificativa |
+|---|---|
+| GitHub Actions roda `pytest` a cada `push`/`pull request` na `main` (`.github/workflows/tests.yml`), sem subir MinIO no runner | Só é possível porque a limpeza foi desenhada desde o início como funções puras, sem I/O: `clean_pib_dataframe`, `_clean_and_aggregate_chunk`, `compute_coverage`, `meses_faltantes` recebem DataFrames/valores e devolvem DataFrames/valores, e só as funções finas em volta delas (`clean_and_upload`, `build_coverage`) tocam o MinIO. O CI testa exatamente a lógica de negócio, sem precisar simular a infraestrutura. |
+| CI cobre só a lógica de limpeza/cruzamento, não os notebooks nem a ingestão (`download_*.py`) | Os notebooks dependem de dado real no MinIO para ter valor (o objetivo deles é explorar, não validar regra de negócio) e os scripts de ingestão dependem de rede externa (SIDRA, OpenDataSUS): automatizá-los no CI exigiria mockar serviços externos, o que foge do escopo de uma disciplina de engenharia de dados aplicada e adicionaria manutenção sem ganho proporcional de confiança. |
+
 ## Pendências conhecidas / próximos passos
 
 - ~~Faltam jul, set, out, nov e dez/2025~~ (**resolvido**): com

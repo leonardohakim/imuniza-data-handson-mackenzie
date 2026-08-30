@@ -3,6 +3,8 @@ Projeto desenvolvido para a disciplina de Hands-on Engenharia de Dados aplicada 
 
 # ImunizaData
 
+[![Testes](https://github.com/leonardohakim/imuniza-data-handson-mackenzie/actions/workflows/tests.yml/badge.svg)](https://github.com/leonardohakim/imuniza-data-handson-mackenzie/actions/workflows/tests.yml)
+
 Projeto desenvolvido para a disciplina de **Hands-on**, Engenharia de Dados aplicada à Saúde Pública.
 
 ## Integrantes
@@ -119,6 +121,11 @@ rede liberada para o DATASUS). Rode `inspect_pni.py` primeiro e ajuste
 pip install pytest
 python -m pytest tests/ -v
 ```
+
+Os testes rodam automaticamente a cada `push`/`pull request` na branch `main`
+via GitHub Actions (`.github/workflows/tests.yml`), sem dependência de MinIO
+ou rede: cobrem apenas as funções puras de limpeza e cruzamento de dados
+(ver decisão de arquitetura em `docs/decisoes_limpeza.md`).
 
 ## Licença
 
