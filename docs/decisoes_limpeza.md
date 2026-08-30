@@ -1,9 +1,7 @@
 # Decisões de Limpeza e Pré-Processamento (Etapa 2)
 
 Registro das decisões tomadas na limpeza (raw → trusted → refined), com a
-justificativa de cada uma, conforme pedido explícito do professor no
-material da disciplina ("cada decisão deve ser documentada e justificada,
-ajudará na reprodutibilidade e na rastreabilidade").
+justificativa de cada uma:
 
 ## 1. Dados de população (IBGE)
 
