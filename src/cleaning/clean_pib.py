@@ -5,13 +5,13 @@ Mesma decisão de limpeza da linha de metadados do SIDRA documentada em
 do array JSON quando chamada sem `/h/n`; ela é descartada aqui, não na
 ingestão, para preservar a raw como veio da fonte).
 
-Diferença de schema em relação à tabela de população: a Tabela 5938 (PIB)
-tem uma dimensão "Variável" própria (D2), porque a tabela expõe várias
-variáveis (PIB total, participações percentuais etc.) — nós só pedimos a
-variável 37 (PIB a preços correntes) na ingestão, mas a coluna ainda vem no
-raw. Já a Tabela 6579 (população) não tem essa dimensão extra, então lá
-D2 já é o ano diretamente. Confirmado contra os dados reais da API antes de
-escrever este arquivo (ver `docs/decisoes_limpeza.md`).
+Mesma estrutura de três dimensões da Tabela 6579 (população): D1 Município,
+D2 Variável (aqui sempre `37`, "PIB a preços correntes", porque a tabela
+expõe várias variáveis — participações percentuais etc. — mas só pedimos a
+37 na ingestão), D3 Ano de referência. (Uma versão anterior deste docstring
+dizia que a Tabela 6579 não tinha a dimensão de Variável e que D2 já era o
+ano lá — isso estava errado, e foi exatamente o bug corrigido em
+`clean_ibge.py`; ver `docs/decisoes_limpeza.md`, seção 8.)
 """
 
 import argparse

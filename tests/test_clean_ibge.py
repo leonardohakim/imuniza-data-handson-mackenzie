@@ -9,11 +9,10 @@ import pandas as pd
 
 from src.cleaning.clean_ibge import clean_population_dataframe
 
-# A URL de download_ibge.py já fixa a variável (v/9324) e o período (p/{ano})
-# na própria requisição, então a Tabela 6579 devolve essa variável (não o
-# ano) como a única dimensão por linha — daí D2C ser sempre "9324" em vez de
-# variar por município. Ver "Decisão de limpeza (bug corrigido)" no topo de
-# clean_ibge.py.
+# A URL de download_ibge.py já fixa a variável (v/9324) em D2; D2C não varia
+# por município, é sempre o código dessa variável (9324). O ano de fato vem
+# em D3 (ver clean_pib.py, mesma estrutura de 3 dimensões) — não é lido
+# daqui, ver "Decisão de limpeza (bug corrigido)" no topo de clean_ibge.py.
 VARIAVEL_POPULACAO_CODIGO = "9324"
 VARIAVEL_POPULACAO_NOME = "População residente estimada"
 
