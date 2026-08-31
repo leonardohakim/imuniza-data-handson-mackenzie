@@ -19,20 +19,21 @@ Resposta bruta da API SIDRA (`/values/t/6579/n6/all/v/9324/p/{ano}`), tabela
 | `MC` / `MN` | Código / nome da unidade de medida (Pessoas) |
 | `V` | Valor da população estimada |
 | `D1C` / `D1N` | Código IBGE (7 dígitos) / nome do município |
-| `D2C` / `D2N` | Código / nome da **variável** (sempre `9324`, "População residente estimada"): é a variável fixada na própria URL da requisição (`v/9324`), não o ano — ver nota abaixo |
+| `D2C` / `D2N` | Código / nome da **variável** (sempre `9324`, "População residente estimada"): é a variável fixada na própria URL da requisição (`v/9324`) |
+| `D3C` / `D3N` | Código / nome do **ano de referência** (ex.: `2024`/`2024`) |
 
 **A primeira linha de dados deste CSV não é um município**: é a linha de
 rótulos que a API SIDRA retorna por padrão (`/h/y`) antes dos dados reais.
 Ver `src/cleaning/clean_ibge.py` para o tratamento.
 
-**O ano de referência não vem em nenhuma coluna deste CSV**: como a URL já
-fixa o período (`p/{ano}`), a Tabela 6579 devolve só a variável por linha
-(D2), ao contrário da Tabela 5938/PIB (que devolve variável em D2 **e** ano
-em D3, porque `p/all` é usado lá). Na camada `trusted`, a coluna `ano` é
-preenchida a partir do parâmetro `--ano` da própria ingestão/limpeza, não
-lida do corpo da resposta — ver decisão em `docs/decisoes_limpeza.md`
-(bug real encontrado e corrigido: uma versão anterior lia `ano` de D2C, que
-sempre valia `9324`).
+**Mesma estrutura de três dimensões da Tabela 5938/PIB** (D1 Município, D2
+Variável, D3 Ano). Na camada `trusted`, a coluna `ano` é preenchida a
+partir do parâmetro `--ano` da própria ingestão/limpeza (mesmo critério já
+usado para particionar os dados no MinIO, `ano={ano}/...`), não lida de
+D3C — embora os dois sempre coincidam na prática. Ver decisão em
+`docs/decisoes_limpeza.md` (bug real encontrado e corrigido: uma versão
+anterior lia `ano` de **D2C**, a variável, que sempre valia `9324`, em vez
+de D3C, o ano).
 
 ### `raw/ibge/pib/ano={ano}/pib_municipios.csv`
 

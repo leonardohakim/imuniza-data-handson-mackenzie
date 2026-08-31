@@ -12,16 +12,23 @@ Decisão de limpeza (documentada):
     como veio da fonte, erros incluídos. A correção acontece na camada trusted.
 
 Decisão de limpeza (documentada, bug corrigido):
-    A URL de `download_ibge.py` já fixa a variável (`v/9324`, "População
-    residente estimada") e o período (`p/{ano}`) na própria requisição. Por
-    isso, a única dimensão que a Tabela 6579 devolve por linha é a variável
-    (D2C/D2N), não o ano — ao contrário da Tabela 5938 (PIB), que devolve
-    variável em D2 e ano em D3. Uma versão anterior deste arquivo mapeava
-    D2C diretamente para a coluna "ano", então todo o dataset ficava com
-    "ano" = "9324" (o código da variável) em vez do ano real. Como o ano
-    já é conhecido (é o parâmetro `--ano` da própria chamada), a correção é
-    atribuí-lo diretamente à coluna "ano" em vez de tentar lê-lo do corpo
-    da resposta. Ver `docs/decisoes_limpeza.md`.
+    A Tabela 6579 devolve três dimensões por linha: D1 (Município), D2
+    (Variável — sempre `9324`, "População residente estimada", porque a
+    URL de `download_ibge.py` já fixa essa variável) e D3 (Ano de
+    referência), na mesma estrutura da Tabela 5938/PIB (D1 Município, D2
+    Variável, D3 Ano; ver `clean_pib.py`). Uma versão anterior deste
+    arquivo mapeava **D2C** direto para a coluna "ano" (confundindo
+    variável com ano), então todo o dataset ficava com "ano" = "9324" em
+    vez do ano real — confirmado comparando com o CSV bruto real, onde
+    D3C/D3N já trazem o ano correto (ex.: "2024"). A correção atribui a
+    coluna "ano" a partir do parâmetro `--ano` da própria chamada (que
+    sempre coincide com D3C, por ser o mesmo ano pedido na ingestão) em
+    vez de ler D2C ou D3C do corpo da resposta — mesmo critério já usado
+    para particionar os dados no MinIO (`ano={ano}/...`), evitando
+    depender de mais uma suposição sobre a posição das dimensões da API.
+    `RENAME_MAP` passou a nomear D2C/D2N como "variavel_codigo"/
+    "variavel_nome", para não repetir a confusão. Ver
+    `docs/decisoes_limpeza.md`.
 """
 
 import argparse
