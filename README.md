@@ -55,7 +55,7 @@ imuniza-data-handson-mackenzie/
 │   ├── ingestion/                # Etapa 1: coleta (fontes -> bucket "raw")
 │   │   ├── download_ibge.py
 │   │   ├── download_pib.py
-│   │   ├── download_pni.py
+│   │   ├── download_pni.py     # opcional — ver nota no "Como Executar"
 │   │   └── inspect_pni.py
 │   └── cleaning/                  # Etapa 2: limpeza (bucket "raw" -> "trusted" -> "refined")
 │       ├── clean_ibge.py
@@ -102,9 +102,12 @@ python -m src.validate_setup  # confere MinIO + fontes externas, cria os buckets
 ```bash
 python -m src.ingestion.download_ibge --ano 2025
 python -m src.ingestion.download_pib --ano 2023   # PIB municipal (variável socioeconômica); série vai até 2023
-python -m src.ingestion.download_pni --ano 2025
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema real antes de limpar
 ```
+
+O PNI (doses aplicadas) **não** passa por `download_pni.py` aqui — ver a
+Etapa 2 abaixo, ele é baixado direto da fonte pelo próprio `clean_pni.py`,
+sem gravar em `raw`.
 
 ### Etapa 2: Limpeza e Análise Exploratória (buckets `trusted` / `refined`)
 
@@ -115,6 +118,16 @@ python -m src.cleaning.clean_pni --ano 2025
 python -m src.cleaning.build_coverage --ano 2025   # cruza PIB de 2023 automaticamente (--ano-pib, default 2023)
 jupyter notebook notebooks/02_analise_exploratoria.ipynb
 ```
+
+`clean_pni.py --ano 2025` baixa **e** limpa os 12 meses do PNI num único
+comando, direto da fonte (OpenDataSUS), mês a mês, sem nunca gravar o ZIP
+bruto em `raw` — baixar os 12 meses inteiros para `raw` primeiro já
+esgotou o disco do Codespace numa tentativa anterior (ver
+`docs/decisoes_limpeza.md`, seção 2). `download_pni.py` continua
+disponível, mas é opcional: só faz sentido se você quiser arquivar os
+ZIPs brutos em `raw` de propósito (ex.: auditoria) — nesse caso, rode-o
+antes e use `clean_pni.py --ano 2025 --from-raw` para reaproveitar o que
+foi arquivado em vez de baixar de novo.
 
 **Atenção:** `build_coverage.py` usa o mesmo `--ano` para localizar tanto a
 população quanto as doses no `trusted` (`ibge/populacao/ano={ano}/...` e

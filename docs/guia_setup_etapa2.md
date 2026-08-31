@@ -42,7 +42,6 @@ Dados Abertos" é um endpoint externo instável, não bloqueia o resto.
 ```bash
 python -m src.ingestion.download_ibge --ano 2025
 python -m src.ingestion.download_pib --ano 2023
-python -m src.ingestion.download_pni --ano 2025
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1
 ```
 
@@ -51,11 +50,12 @@ python -m src.ingestion.inspect_pni --ano 2025 --mes 1
   próximo passo — não é só um detalhe estético).
 - `download_pib`: PIB municipal fica sempre ~2 anos defasado na fonte; 2023
   é o ano mais recente disponível na série do IBGE.
-- `download_pni`: doses aplicadas (OpenDataSUS), processa o ano completo em
-  streaming, mês a mês (pode levar alguns minutos).
 - `inspect_pni`: confirma os nomes reais das colunas do CSV do PNI antes de
   limpar (o schema já foi validado nesta sessão, mas é bom hábito rodar
   antes de confiar no pipeline).
+- **O PNI (doses aplicadas) não passa por `download_pni.py` aqui** — ver o
+  próximo passo: `clean_pni.py` já baixa e limpa o ano inteiro num único
+  comando, direto da fonte, sem gravar em `raw`.
 
 ## 4. Etapa 2 — Limpeza e cruzamento (grava em `trusted`/`refined`)
 
@@ -65,6 +65,19 @@ python -m src.cleaning.clean_pib --ano 2023
 python -m src.cleaning.clean_pni --ano 2025
 python -m src.cleaning.build_coverage --ano 2025
 ```
+
+**Por que `clean_pni.py` sozinho basta para o PNI (sem `download_pni.py`
+antes):** por padrão, `clean_pni.py --ano <ano>` baixa cada mês direto da
+fonte (OpenDataSUS) para um arquivo temporário local, limpa, envia o
+parquet para `trusted` e apaga o temporário antes do próximo mês — nunca
+grava o ZIP bruto no bucket `raw`. Baixar os 12 meses inteiros para `raw`
+primeiro (via `download_pni.py`) já esgotou o disco deste mesmo Codespace
+numa tentativa anterior (~18,5GB; só 7 dos 12 meses couberam — ver
+`docs/decisoes_limpeza.md`, seção 2). `download_pni.py` continua
+disponível, mas só faz sentido se você quiser arquivar os ZIPs brutos em
+`raw` de propósito (ex.: auditoria); nesse caso, rode-o antes e use
+`clean_pni.py --ano 2025 --from-raw` para reaproveitar o que foi
+arquivado em vez de baixar de novo.
 
 **Nota importante — por que população usa `--ano 2025`, não `2024`:**
 `build_coverage.py` usa o **mesmo** parâmetro `--ano` para localizar tanto
@@ -192,3 +205,12 @@ confira em qual partição (`ano={ano}` no MinIO) o script que você rodou
 realmente lê e grava, e reprocesse exatamente essa partição. Ver a nota do
 passo 4 acima; é um erro fácil de cometer e difícil de perceber, porque o
 comando roda sem erro nenhum.
+
+**Disco cheio (`No space left on device`) ao processar o PNI** — quase
+sempre é ter rodado `download_pni.py` para os 12 meses antes de limpar
+(grava ~18,5GB permanentemente no bucket `raw`). O passo 4 acima
+(`clean_pni.py --ano 2025`, sem `--from-raw`) não tem esse problema: baixa
+um mês por vez para um temporário local e apaga antes do próximo. Se o
+disco já encheu por causa de um `download_pni.py` anterior, `docker system
+prune` e limpar o bucket `raw` (via MinIO console ou `mc rb`) costumam
+liberar espaço suficiente para tentar de novo com `clean_pni.py` direto.

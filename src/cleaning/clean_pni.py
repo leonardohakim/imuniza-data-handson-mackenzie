@@ -30,20 +30,36 @@ Decisões de limpeza (documentadas)
   polo regional de vacinação (concentra aplicação de municípios vizinhos) e
   merecer investigação na Etapa 2, não descarte automático.
 
-Por que o processamento é em streaming (chunks), não em memória
+Por que o processamento é em streaming (chunks), não em memória — nem em
+disco
 ------------------------------------------------------------------
 Os CSVs mensais do PNI são nacionais e grandes (o de abril/2025, por
 exemplo, tem ~4GB comprimido — descompactado e carregado como DataFrame
 facilmente passa de 15-20GB). Isso não cabe na RAM de uma máquina comum
-(nem do Codespace usado para desenvolver isso, que tem 7.8GB). Em vez de
-baixar o ZIP inteiro e ler o CSV inteiro de uma vez, este módulo:
-1. Lê o objeto do MinIO em blocos pequenos (streaming do S3, via
-   `botocore`'s `StreamingBody`), nunca materializando o ZIP inteiro em
-   memória ou disco.
-2. Descompacta o ZIP também em streaming, com a biblioteca `stream-unzip`
-   (que não precisa "seekar" no arquivo, ao contrário do `zipfile` padrão).
+(nem do Codespace usado para desenvolver isso, que tem 7.8GB). Uma
+primeira tentativa também mostrou que não cabe no disco: baixar os 12 ZIPs
+mensais inteiros para o bucket `raw` do MinIO (~18,5GB) esgotou o disco do
+Codespace (32GB) antes do fim do ano — só 7 dos 12 meses couberam (ver
+`docs/decisoes_limpeza.md`, seção 2). Por isso, **por padrão** (função
+`clean_and_upload_from_source`, usada pelo CLI quando `--from-raw` não é
+passado), este módulo:
+1. Baixa cada mês **direto da fonte** (OpenDataSUS/CKAN) para um arquivo
+   temporário local, processa esse arquivo e o apaga antes de seguir para
+   o próximo mês — nunca mantém o ZIP bruto em `raw`. Essa lógica existia
+   como um script à parte (`reprocessar_pni_2025.py`) e foi incorporada
+   aqui para o comportamento documentado (`docs/decisoes_limpeza.md`,
+   `README.md`) corresponder ao que o CLI realmente faz.
+2. Descompacta o ZIP em streaming, com a biblioteca `stream-unzip` (que
+   não precisa "seekar" no arquivo, ao contrário do `zipfile` padrão) —
+   usada tanto sobre o arquivo temporário local quanto, com `--from-raw`,
+   sobre um objeto já arquivado no MinIO (`_s3_object_byte_chunks`).
 3. Lê o CSV descomprimido em pedaços (`chunksize` do pandas) em vez de um
    DataFrame único, limpando e agregando cada pedaço antes de descartá-lo.
+
+Só o parquet limpo (pequeno) de cada mês vai para `trusted`; nada do bruto
+toca `raw`, a menos que você peça `--from-raw` explicitamente (ver
+`download_pni.py` para quando isso faz sentido — arquivar o raw de
+propósito).
 
 Limitação documentada: a remoção de duplicatas exatas (linha completa
 repetida) só enxerga duplicatas dentro do mesmo pedaço (chunk), não no
@@ -67,6 +83,12 @@ from botocore.client import Config
 from stream_unzip import stream_unzip
 
 from src.config import MINIO_ACCESS_KEY, MINIO_ENDPOINT, MINIO_SECRET_KEY
+from src.ingestion.download_pni import (
+    download_to_temp,
+    list_resources,
+    sanitize_resource_name,
+    selecionar_csv_mensal,
+)
 
 BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "raw")
 BUCKET_TRUSTED = os.getenv("MINIO_TRUSTED_BUCKET", "trusted")
@@ -248,6 +270,18 @@ def _s3_object_byte_chunks(s3, bucket: str, key: str, chunk_size: int = S3_READ_
         yield chunk
 
 
+def _local_byte_chunks(path: Path, chunk_size: int = S3_READ_CHUNK_SIZE):
+    """Lê um arquivo local em blocos — usado por `clean_and_upload_from_source`
+    para descompactar o ZIP baixado da fonte (`download_to_temp`) sem
+    carregá-lo inteiro em memória, o mesmo padrão de `_s3_object_byte_chunks`."""
+    with open(path, "rb") as file:
+        while True:
+            chunk = file.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+
 def _resolve_columns(sample_df: pd.DataFrame) -> dict:
     resolved = {
         field_name: resolve_column(sample_df, field_name)
@@ -401,7 +435,9 @@ def clean_and_upload(ano: int) -> list[CleaningReport]:
     if not objects:
         raise RuntimeError(
             f"Nenhum objeto encontrado em s3://{BUCKET_RAW}/{prefix}. "
-            "Rode download_pni.py antes de limpar."
+            "Rode download_pni.py antes de limpar com --from-raw, ou rode "
+            "clean_pni.py sem --from-raw para baixar direto da fonte "
+            "(não precisa de download_pni.py nesse caso)."
         )
 
     reports = []
@@ -474,12 +510,113 @@ def clean_and_upload(ano: int) -> list[CleaningReport]:
     return reports
 
 
+def clean_and_upload_from_source(ano: int, dataset_slug: str | None = None) -> list[CleaningReport]:
+    """Baixa, limpa e agrega cada mês do PNI direto da fonte (OpenDataSUS),
+    sem nunca gravar o ZIP bruto no bucket `raw` do MinIO. É o fluxo padrão
+    de `clean_pni.py` (ver docstring do módulo) — dispensa rodar
+    `download_pni.py` antes. Substitui o antigo script à parte
+    `reprocessar_pni_2025.py`, generalizado para qualquer `--ano`.
+
+    Cada mês é baixado para um arquivo temporário local (`download_to_temp`,
+    mesma função usada por `download_pni.py`) e apagado assim que o parquet
+    limpo já foi enviado para `trusted` — nunca mais que um mês por vez em
+    disco. Use `clean_and_upload` (`--from-raw`) só se você já arquivou os
+    ZIPs em `raw` de propósito.
+    """
+    s3 = get_s3_client()
+    dataset_slug = dataset_slug or (
+        "doses-aplicadas-pelo-programa-de-nacional-de-imunizacoes-pni-"
+        f"{ano}"
+    )
+    selected = selecionar_csv_mensal(list_resources(dataset_slug))
+    print(
+        f"[{dataset_slug}] {len(selected)} meses encontrados "
+        "(baixando direto da fonte — nada é gravado em 'raw')"
+    )
+
+    reports = []
+    aggregated_frames = []
+
+    for resource in selected:
+        url = resource.get("url")
+        name = resource.get("name", "sem_nome")
+        if not url:
+            continue
+
+        safe_name = sanitize_resource_name(name)
+        source_name = f"{safe_name}.zip"
+        print(f"[mês] {name}")
+
+        temporary_path = None
+        try:
+            print("  baixando (temporário local)...")
+            temporary_path, _sha256, size = download_to_temp(url)
+            print(f"  baixado: {size / 1e9:.2f} GB")
+
+            csv_chunk_iter = _iter_csv_chunks_from_zip(_local_byte_chunks(temporary_path))
+            cleaned_df, report = clean_month_stream(csv_chunk_iter, source_name=source_name)
+        except Exception as error:
+            print(f"  [FALHOU] {source_name}: {error}")
+            continue
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+        reports.append(report)
+        aggregated_frames.append(cleaned_df)
+
+        buffer = io.BytesIO()
+        cleaned_df.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        trusted_key = f"pni/ano={ano}/{safe_name}.parquet"
+        s3.upload_fileobj(buffer, BUCKET_TRUSTED, trusted_key)
+
+        report_key = f"pni/ano={ano}/_reports/{safe_name}.txt"
+        s3.put_object(Bucket=BUCKET_TRUSTED, Key=report_key, Body=report.to_text().encode("utf-8"))
+        print(f"  [OK] {report.linhas_finais} linhas -> s3://{BUCKET_TRUSTED}/{trusted_key}")
+
+    if aggregated_frames:
+        consolidated = pd.concat(aggregated_frames, ignore_index=True)
+
+        ano_mes_presentes = sorted(consolidated["ano_mes"].unique())
+        print(f"[INFO] Meses presentes no consolidado: {ano_mes_presentes}")
+        faltando = meses_faltantes(ano, ano_mes_presentes)
+        if faltando:
+            print(
+                f"[AVISO] Consolidado incompleto: faltam os meses {faltando}. "
+                "Confira a lista de meses que 'FALHOU' acima antes de "
+                "confiar neste consolidado."
+            )
+
+        buffer = io.BytesIO()
+        consolidated.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        consolidated_key = f"pni/ano={ano}/doses_aplicadas_consolidado.parquet"
+        s3.upload_fileobj(buffer, BUCKET_TRUSTED, consolidated_key)
+        print(
+            f"[OK] Consolidado do ano ({len(consolidated)} linhas) -> "
+            f"s3://{BUCKET_TRUSTED}/{consolidated_key}"
+        )
+
+    return reports
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Limpa e agrega os CSVs mensais do PNI (raw -> trusted) no MinIO"
+        description="Baixa (direto da fonte, por padrão), limpa e agrega os dados mensais do PNI no MinIO"
     )
     parser.add_argument("--ano", type=int, default=2025)
-    reports = clean_and_upload(parser.parse_args().ano)
+    parser.add_argument(
+        "--from-raw",
+        action="store_true",
+        help=(
+            "Lê os ZIPs já arquivados em s3://raw/pni/ano=<ano>/ (requer rodar "
+            "download_pni.py antes) em vez de baixar direto da fonte. O padrão "
+            "(sem essa flag) nunca grava o ZIP bruto em disco nem no MinIO."
+        ),
+    )
+    args = parser.parse_args()
+    reports = clean_and_upload(args.ano) if args.from_raw else clean_and_upload_from_source(args.ano)
     for report in reports:
         print()
         print(report.to_text())

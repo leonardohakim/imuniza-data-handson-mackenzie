@@ -1,4 +1,16 @@
-"""Download PNI CSV resources from CKAN directly into MinIO raw storage."""
+"""Download PNI CSV resources from CKAN directly into MinIO raw storage.
+
+Este script é **opcional** no fluxo padrão do projeto: `src.cleaning.clean_pni`
+(sem `--from-raw`) já baixa, limpa e descarta cada mês direto da fonte, sem
+passar por `raw` — ver `clean_and_upload_from_source` nesse módulo, que
+incorpora o que antes era um script à parte (`reprocessar_pni_2025.py`).
+Use `download_pni.py` só se quiser arquivar deliberadamente os ZIPs brutos
+do PNI em `raw` (ex.: auditoria/reprodutibilidade); nesse caso, rode depois
+`clean_pni.py --ano <ano> --from-raw` para reaproveitar o que foi
+arquivado em vez de baixar de novo. Ver `docs/decisoes_limpeza.md`
+(seção 2) sobre por que baixar os 12 meses inteiros para `raw` sem essa
+ressalva já esgotou o disco do Codespace numa tentativa anterior.
+"""
 
 import hashlib
 import os
@@ -138,6 +150,16 @@ def download_to_temp(url: str) -> tuple[Path, str, int]:
         raise
 
 
+def sanitize_resource_name(name: str) -> str:
+    """Normaliza o nome de um recurso do PNI para um nome de arquivo seguro
+    (sem acentos/espaços). Usado tanto para a chave em `raw` (aqui) quanto
+    para os arquivos gerados em `trusted` quando `clean_pni.py` baixa direto
+    da fonte (`clean_and_upload_from_source`) — mantém os dois modos
+    nomeando o mesmo mês da mesma forma."""
+    safe_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-zA-Z0-9]+", "_", safe_name).strip("_").lower()
+
+
 def upload_file(s3, path: Path, bucket: str, key: str) -> None:
     """Upload a local file using boto3 multipart transfer when necessary."""
     s3.upload_file(str(path), bucket, key)
@@ -160,8 +182,7 @@ def download_and_upload(dataset_slug: str, ano: int) -> None:
         temporary_path = None
         try:
             temporary_path, sha256, size = download_to_temp(url)
-            safe_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-            safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", safe_name).strip("_").lower()
+            safe_name = sanitize_resource_name(name)
             extension = os.path.splitext(urlparse(url).path)[1] or ".csv"
             key = f"pni/ano={ano}/{safe_name}{extension}"
             upload_file(s3, temporary_path, BUCKET_RAW, key)
@@ -177,7 +198,13 @@ def download_and_upload(dataset_slug: str, ano: int) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Baixa os CSVs mensais do PNI para o MinIO")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Baixa os CSVs mensais do PNI para o bucket 'raw' do MinIO (opcional — "
+            "ver docstring do módulo; o fluxo padrão é `clean_pni.py --ano <ano>` "
+            "sem passar por aqui)."
+        )
+    )
     parser.add_argument("--ano", type=int, default=2024)
     parser.add_argument("--dataset-slug")
     args = parser.parse_args()
