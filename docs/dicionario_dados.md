@@ -52,18 +52,26 @@ seção de população acima); tratamento em `src/cleaning/clean_pib.py`.
 CSV mensal de doses aplicadas do PNI (formato original do OpenDataSUS: `;`
 como separador, encoding `latin1`), um arquivo por mês, dentro de um ZIP.
 
-As colunas exatas variam por ano/dataset; **confirme com
-`python -m src.ingestion.inspect_pni --ano <ano> --mes <mes>`** antes de
-assumir qualquer nome. Colunas esperadas (nomenclatura provável, no padrão
-DATASUS/RNDS usado em outros datasets de vacinação):
+Nomes de coluna confirmados contra o schema real do PNI (rodando
+`clean_pni.py`/`inspect_pni.py` contra os dados baixados no Codespace,
+ago/2026). Os nomes hipotéticos usados antes de termos acesso aos dados
+reais continuam como fallback em `COLUMN_CANDIDATES`
+(`src/cleaning/clean_pni.py`), caso o schema mude entre anos/datasets:
 
-| Campo lógico | Candidatos de nome de coluna |
-|---|---|
-| Código do município (paciente) | `paciente_endereco_coibgemunicipio`, `estabelecimento_municipio_codigo`, `co_municipio` |
-| Data de aplicação da dose | `vacina_dataaplicacao`, `data_aplicacao`, `dt_aplicacao` |
-| Nome/tipo da vacina | `vacina_nome`, `vacina_descricao` |
-| Dose (1ª, 2ª, reforço...) | `vacina_descricao_dose`, `dose` |
-| Idade do paciente | `paciente_idade` |
+| Campo lógico | Coluna real (confirmada) | Fallbacks hipotéticos |
+|---|---|---|
+| Código do município (paciente, residência) | `co_municipio_paciente` | `co_municipio_estabelecimento`, `paciente_endereco_coibgemunicipio`, `estabelecimento_municipio_codigo`, `co_municipio` |
+| Data de aplicação da dose | `dt_vacina` | `vacina_dataaplicacao`, `data_aplicacao`, `dt_aplicacao` |
+| Nome/tipo da vacina (sigla do imunobiológico) | `sg_imunobiologico` | `vacina_nome`, `vacina_descricao`, `no_vacina` |
+| Dose (1ª, 2ª, reforço...) | `co_dose_vacina` | `ds_tipo_dose`, `vacina_descricao_dose`, `dose`, `no_dose` |
+| Idade do paciente | `nu_idade_paciente` | `paciente_idade`, `idade` |
+
+Usamos o município de **residência** do paciente (`co_municipio_paciente`),
+não o do estabelecimento onde a dose foi aplicada: a métrica de cobertura
+usa como denominador a população residente (IBGE), então o numerador
+(doses) precisa seguir o mesmo critério, senão municípios-polo (com
+grandes hospitais/postos) ficariam com cobertura artificialmente inflada
+às custas dos municípios vizinhos.
 
 ## Camada `trusted` (dado limpo e padronizado)
 
@@ -101,7 +109,7 @@ individual):
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
-| `codigo_municipio` | string (7 dígitos) | Código IBGE do município |
+| `codigo_municipio` | string (**6 dígitos**, DATASUS/SUS) | Código do município no padrão DATASUS, sem o dígito verificador do IBGE. Diferente da camada `refined`, que usa o código IBGE de 7 dígitos: ver `docs/decisoes_limpeza.md` (seção 2) para por que os dois sistemas de código coexistem e como são cruzados em `build_coverage.py` |
 | `ano_mes` | string (`YYYY-MM`) | Mês de aplicação |
 | `vacina_nome` | string | Nome/tipo da vacina (quando a coluna existe no raw) |
 | `doses_aplicadas` | int64 | Contagem de doses naquele município/mês/vacina |

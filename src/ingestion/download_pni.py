@@ -25,7 +25,7 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 }
 
-BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "bronze")
+BUCKET_RAW = os.getenv("MINIO_RAW_BUCKET", "raw")
 MONTH_ORDER = {
     "janeiro": 1,
     "fevereiro": 2,

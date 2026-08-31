@@ -18,7 +18,7 @@ except ModuleNotFoundError:
 MINIO_HOST = os.getenv("MINIO_HOST", "localhost")
 MINIO_API_PORT = os.getenv("MINIO_API_PORT", "9000")
 MINIO_CONSOLE_PORT = os.getenv("MINIO_CONSOLE_PORT", "9001")
-MINIO_BUCKETS = ("bronze", "silver", "gold")
+MINIO_BUCKETS = ("raw", "trusted", "refined")
 
 
 def check_endpoint(name: str, url: str) -> bool:

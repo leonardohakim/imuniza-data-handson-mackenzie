@@ -54,6 +54,12 @@ justificativa de cada uma:
 | GitHub Actions roda `pytest` a cada `push`/`pull request` na `main` (`.github/workflows/tests.yml`), sem subir MinIO no runner | Só é possível porque a limpeza foi desenhada desde o início como funções puras, sem I/O: `clean_pib_dataframe`, `_clean_and_aggregate_chunk`, `compute_coverage`, `meses_faltantes` recebem DataFrames/valores e devolvem DataFrames/valores, e só as funções finas em volta delas (`clean_and_upload`, `build_coverage`) tocam o MinIO. O CI testa exatamente a lógica de negócio, sem precisar simular a infraestrutura. |
 | CI cobre só a lógica de limpeza/cruzamento, não os notebooks nem a ingestão (`download_*.py`) | Os notebooks dependem de dado real no MinIO para ter valor (o objetivo deles é explorar, não validar regra de negócio) e os scripts de ingestão dependem de rede externa (SIDRA, OpenDataSUS): automatizá-los no CI exigiria mockar serviços externos, o que foge do escopo de uma disciplina de engenharia de dados aplicada e adicionaria manutenção sem ganho proporcional de confiança. |
 
+## 6. Nomes dos buckets do MinIO: `raw`/`trusted`/`refined`
+
+| Decisão | Justificativa |
+|---|---|
+| `docker-compose.yml` e `validate_setup.py` criam/checam os buckets `raw`, `trusted`, `refined` (não mais `bronze`/`silver`/`gold`) | Divergência encontrada na revisão final: o `docker-compose.yml` e o `validate_setup.py` originais criavam `bronze`/`silver`/`gold`, enquanto todo o resto do código (`clean_ibge.py`, `clean_pni.py`, `clean_pib.py`, `build_coverage.py`, `download_pib.py`) já usava por padrão `raw`/`trusted`/`refined`, e o README nunca documentou a variável de ambiente necessária para reconciliar isso. Como `raw`/`trusted`/`refined` é a convenção usada em todo o resto do projeto (estrutura de pastas no README, `docs/dicionario_dados.md`, todos os módulos de limpeza), alinhamos a infraestrutura a ela em vez do caminho inverso: menos arquivos para mudar, e mantém o vocabulário já consolidado na documentação. |
+
 ## Pendências conhecidas / próximos passos
 
 - ~~Faltam jul, set, out, nov e dez/2025~~ (**resolvido**): com
@@ -72,10 +78,13 @@ justificativa de cada uma:
   SIDRA, ano de referência 2023) como variável socioeconômica no lugar
   (`download_pib.py` + `clean_pib.py`); ver seção 3 acima para a
   justificativa completa dessa troca.
-- Este documento e `docs/dicionario_dados.md` foram inicialmente escritos
-  sem acesso aos dados reais do PNI (rede bloqueada no ambiente usado para
-  desenvolver o pipeline). Já validamos o schema real rodando `clean_pni.py`
-  contra os dados baixados no Codespace e ajustamos `COLUMN_CANDIDATES`
-  (ver decisão acima); falta ainda atualizar `docs/dicionario_dados.md` com
-  os nomes de coluna reais do PNI (hoje ele documenta só os nomes
-  hipotéticos originais).
+- ~~Este documento e `docs/dicionario_dados.md` foram inicialmente escritos
+  sem acesso aos dados reais do PNI~~ (**resolvido**): validamos o schema
+  real rodando `clean_pni.py` contra os dados baixados no Codespace,
+  ajustamos `COLUMN_CANDIDATES` (ver decisão acima) e atualizamos
+  `docs/dicionario_dados.md` com os nomes de coluna reais confirmados
+  (`co_municipio_paciente`, `dt_vacina`, `sg_imunobiologico`,
+  `co_dose_vacina`, `nu_idade_paciente`).
+- ~~Bucket names divergentes entre `docker-compose.yml`/`validate_setup.py`
+  (`bronze`/`silver`/`gold`) e o resto do código
+  (`raw`/`trusted`/`refined`)~~ (**resolvido**, ver seção 6 acima).
