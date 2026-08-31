@@ -27,6 +27,15 @@ A proposta busca transformar dados públicos, hoje dispersos e pouco explorados,
 - **OpenDataSUS**: bases granulares de doses aplicadas por município, período e faixa etária
 - **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
 
+## Arquitetura do Pipeline
+
+![Diagrama de arquitetura do pipeline ImunizaData: fontes externas (IBGE/SIDRA, OpenDataSUS), ingestão, camadas raw/trusted/refined no MinIO, limpeza, cruzamento e análise exploratória, com as caixas de infraestrutura (docker-compose/MinIO) e qualidade (pytest/CI)](docs/arquitetura_pipeline.svg)
+
+Todos os componentes do pipeline e as tecnologias envolvidas em cada etapa
+(fontes externas, ingestão, camadas de dado, limpeza, cruzamento, análise,
+infraestrutura e qualidade/CI) estão detalhados no diagrama acima
+(`docs/arquitetura_pipeline.svg`).
+
 ## Estrutura do Projeto
 
 Os dados não ficam em pastas locais: vivem em três buckets do MinIO
@@ -36,6 +45,7 @@ refined:
 ```
 imuniza-data-handson-mackenzie/
 ├── docs/
+│   ├── arquitetura_pipeline.svg # Diagrama de arquitetura (componentes e tecnologias)
 │   ├── dicionario_dados.md     # Schema de cada camada (raw/trusted/refined)
 │   └── decisoes_limpeza.md     # Decisões de limpeza documentadas e justificadas
 ├── notebooks/                  # Notebooks de exploracao e prototipagem

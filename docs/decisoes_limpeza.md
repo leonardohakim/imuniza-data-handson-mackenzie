@@ -60,6 +60,19 @@ justificativa de cada uma:
 |---|---|
 | `docker-compose.yml` e `validate_setup.py` criam/checam os buckets `raw`, `trusted`, `refined` (não mais `bronze`/`silver`/`gold`) | Divergência encontrada na revisão final: o `docker-compose.yml` e o `validate_setup.py` originais criavam `bronze`/`silver`/`gold`, enquanto todo o resto do código (`clean_ibge.py`, `clean_pni.py`, `clean_pib.py`, `build_coverage.py`, `download_pib.py`) já usava por padrão `raw`/`trusted`/`refined`, e o README nunca documentou a variável de ambiente necessária para reconciliar isso. Como `raw`/`trusted`/`refined` é a convenção usada em todo o resto do projeto (estrutura de pastas no README, `docs/dicionario_dados.md`, todos os módulos de limpeza), alinhamos a infraestrutura a ela em vez do caminho inverso: menos arquivos para mudar, e mantém o vocabulário já consolidado na documentação. |
 
+## 7. Diagrama de arquitetura do pipeline
+
+| Decisão | Justificativa |
+|---|---|
+| Diagrama único (`docs/arquitetura_pipeline.svg`, referenciado no README) cobrindo fontes externas, ingestão, as três camadas do MinIO, limpeza, cruzamento, análise exploratória, infraestrutura (docker-compose) e qualidade (pytest/CI) | Requisito explícito do material da disciplina: um diagrama de alta fidelidade representando todos os componentes do pipeline e todas as tecnologias envolvidas, para reprodutibilidade e rastreabilidade. Optamos por SVG (não uma imagem estática de baixa resolução) para o diagrama continuar legível em qualquer zoom, e por um arquivo versionado no repositório (não uma ferramenta externa como draw.io) para não depender de um serviço fora do controle da equipe. |
+
+## 8. Coluna `ano` da população (IBGE): bug corrigido
+
+| Decisão | Justificativa |
+|---|---|
+| `clean_ibge.py` preenche a coluna `ano` a partir do parâmetro `--ano` da própria limpeza, em vez de renomear a coluna `D2C` da resposta da SIDRA | **Bug real encontrado** (ao investigar uma dúvida da equipe sobre o significado do valor `9324` aparecendo na coluna `ano`): a URL de `download_ibge.py` já fixa a variável (`v/9324`, "População residente estimada") e o período (`p/{ano}`) na própria requisição, então a Tabela 6579 devolve só a **variável** como dimensão por linha (D2), não o ano — ao contrário da Tabela 5938/PIB, que devolve variável em D2 **e** ano em D3 (`clean_pib.py` já tratava isso corretamente). A versão anterior de `clean_ibge.py` renomeava `D2C` direto para `"ano"`, então **todo o dataset de população — e, por herança do `merge` em `build_coverage.py`, o dataset refinado inteiro — ficava com `ano = "9324"` em vez do ano real (ex.: `"2024"`)**. Os testes não pegaram o problema porque a própria fixture sintética (`_linha_municipio`) já assumia esse mapeamento errado (usava `ano` como valor de `D2C`), reproduzindo a suposição equivocada em vez do formato real da API. Como a coluna não é usada para nenhum `join` (o particionamento por ano já vem do caminho no MinIO, `ano={ano}/...`, não da coluna), o bug não afetava a métrica de cobertura em si — mas deixava um valor visivelmente errado em qualquer inspeção do dataset (`df.head()`, dicionário de dados), o tipo de inconsistência que motivaria uma pergunta direta dos orientadores. |
+| Fixture de teste corrigida para refletir o formato real da API (`D2C`/`D2N` sempre `9324`/"População residente estimada", constante por linha) | A fixture antiga (com `D2C` variando por chamada, imitando um "ano") não representava a resposta real da SIDRA e mascarava o bug acima. Adicionado também um teste de regressão (`test_coluna_ano_usa_o_ano_pedido_nao_o_codigo_da_variavel_sidra`) que falha caso a coluna `ano` volte a ser lida do corpo da resposta em vez do parâmetro da função. |
+
 ## Pendências conhecidas / próximos passos
 
 - ~~Faltam jul, set, out, nov e dez/2025~~ (**resolvido**): com
@@ -88,3 +101,8 @@ justificativa de cada uma:
 - ~~Bucket names divergentes entre `docker-compose.yml`/`validate_setup.py`
   (`bronze`/`silver`/`gold`) e o resto do código
   (`raw`/`trusted`/`refined`)~~ (**resolvido**, ver seção 6 acima).
+- ~~Coluna `ano` do dataset de população (e, por herança, do refinado) trazia
+  o código da variável SIDRA (`9324`) em vez do ano real~~ (**resolvido**,
+  ver seção 8 acima). Requer re-executar `clean_ibge.py`, `build_coverage.py`
+  e o notebook para que os dados já processados no MinIO reflitam a
+  correção — o `raw` não muda, só as camadas `trusted`/`refined`.

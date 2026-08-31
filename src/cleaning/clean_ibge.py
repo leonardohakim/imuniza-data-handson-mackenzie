@@ -10,6 +10,18 @@ Decisão de limpeza (documentada):
     "V" não é numérica nela) em vez de corrigir a ingestão, para preservar o
     princípio de que a camada raw nunca é reescrita — ela é o dado exatamente
     como veio da fonte, erros incluídos. A correção acontece na camada trusted.
+
+Decisão de limpeza (documentada, bug corrigido):
+    A URL de `download_ibge.py` já fixa a variável (`v/9324`, "População
+    residente estimada") e o período (`p/{ano}`) na própria requisição. Por
+    isso, a única dimensão que a Tabela 6579 devolve por linha é a variável
+    (D2C/D2N), não o ano — ao contrário da Tabela 5938 (PIB), que devolve
+    variável em D2 e ano em D3. Uma versão anterior deste arquivo mapeava
+    D2C diretamente para a coluna "ano", então todo o dataset ficava com
+    "ano" = "9324" (o código da variável) em vez do ano real. Como o ano
+    já é conhecido (é o parâmetro `--ano` da própria chamada), a correção é
+    atribuí-lo diretamente à coluna "ano" em vez de tentar lê-lo do corpo
+    da resposta. Ver `docs/decisoes_limpeza.md`.
 """
 
 import argparse
@@ -29,8 +41,8 @@ BUCKET_TRUSTED = os.getenv("MINIO_TRUSTED_BUCKET", "trusted")
 RENAME_MAP = {
     "D1C": "codigo_municipio",
     "D1N": "municipio",
-    "D2C": "ano",
-    "D2N": "ano_nome",
+    "D2C": "variavel_codigo",
+    "D2N": "variavel_nome",
     "V": "populacao",
     "MC": "unidade_medida_codigo",
     "MN": "unidade_medida",
@@ -73,8 +85,13 @@ def get_s3_client():
     )
 
 
-def clean_population_dataframe(raw_df: pd.DataFrame) -> tuple[pd.DataFrame, CleaningReport]:
-    """Apply all cleaning decisions to a raw SIDRA population dataframe."""
+def clean_population_dataframe(raw_df: pd.DataFrame, ano: int) -> tuple[pd.DataFrame, CleaningReport]:
+    """Apply all cleaning decisions to a raw SIDRA population dataframe.
+
+    `ano` é o ano de referência pedido na ingestão (mesmo valor do `--ano` de
+    `download_ibge.py`/`clean_and_upload`). Não vem do corpo da resposta da
+    API: ver "Decisão de limpeza (bug corrigido)" no topo do arquivo.
+    """
     report = CleaningReport(linhas_lidas=len(raw_df))
     df = raw_df.copy()
 
@@ -113,6 +130,7 @@ def clean_population_dataframe(raw_df: pd.DataFrame) -> tuple[pd.DataFrame, Clea
     df = df.loc[~duplicadas].copy()
 
     df["populacao"] = df["populacao"].astype("int64")
+    df["ano"] = str(ano)
     colunas_finais = [
         "codigo_municipio",
         "municipio",
@@ -134,7 +152,7 @@ def clean_and_upload(ano: int) -> CleaningReport:
     obj = s3.get_object(Bucket=BUCKET_RAW, Key=raw_key)
     raw_df = pd.read_csv(io.BytesIO(obj["Body"].read()), dtype=str)
 
-    clean_df, report = clean_population_dataframe(raw_df)
+    clean_df, report = clean_population_dataframe(raw_df, ano)
 
     trusted_key = f"ibge/populacao/ano={ano}/populacao_municipios.parquet"
     buffer = io.BytesIO()
