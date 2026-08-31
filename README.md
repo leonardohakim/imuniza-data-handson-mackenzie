@@ -100,7 +100,7 @@ python -m src.validate_setup  # confere MinIO + fontes externas, cria os buckets
 ### Etapa 1: Ingestão (bucket `raw`)
 
 ```bash
-python -m src.ingestion.download_ibge --ano 2024
+python -m src.ingestion.download_ibge --ano 2025
 python -m src.ingestion.download_pib --ano 2023   # PIB municipal (variável socioeconômica); série vai até 2023
 python -m src.ingestion.download_pni --ano 2025
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema real antes de limpar
@@ -109,12 +109,24 @@ python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema rea
 ### Etapa 2: Limpeza e Análise Exploratória (buckets `trusted` / `refined`)
 
 ```bash
-python -m src.cleaning.clean_ibge --ano 2024
+python -m src.cleaning.clean_ibge --ano 2025
 python -m src.cleaning.clean_pib --ano 2023
 python -m src.cleaning.clean_pni --ano 2025
 python -m src.cleaning.build_coverage --ano 2025   # cruza PIB de 2023 automaticamente (--ano-pib, default 2023)
 jupyter notebook notebooks/02_analise_exploratoria.ipynb
 ```
+
+**Atenção:** `build_coverage.py` usa o mesmo `--ano` para localizar tanto a
+população quanto as doses no `trusted` (`ibge/populacao/ano={ano}/...` e
+`pni/ano={ano}/...`). Rode `clean_ibge` sempre com o **mesmo** `--ano`
+passado a `build_coverage` — usar anos diferentes faz `build_coverage` ler
+uma partição de população desatualizada ou inexistente, sem erro nenhum
+visível na hora. Foi exatamente esse desalinhamento que causou um bug real
+nesta sessão (ver `docs/decisoes_limpeza.md`, seção 8).
+
+Guia passo a passo completo (do zero até o final da Etapa 2, com solução
+de problemas comuns) em
+[`docs/guia_setup_etapa2.md`](docs/guia_setup_etapa2.md).
 
 Decisões de limpeza (o quê e por quê) estão documentadas em
 [`docs/decisoes_limpeza.md`](docs/decisoes_limpeza.md); o schema de cada
