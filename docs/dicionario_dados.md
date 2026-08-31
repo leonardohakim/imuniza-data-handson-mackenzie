@@ -57,10 +57,15 @@ pedindo só a 37 na ingestão); o ano fica em `D3`. A primeira linha de dados
 também pode vir com o mesmo problema da linha de metadados do SIDRA (ver
 seção de população acima); tratamento em `src/cleaning/clean_pib.py`.
 
-### `raw/pni/ano={ano}/<nome_do_arquivo>.zip`
+### `raw/pni/ano={ano}/<nome_do_arquivo>.zip` (opcional)
 
 CSV mensal de doses aplicadas do PNI (formato original do OpenDataSUS: `;`
 como separador, encoding `latin1`), um arquivo por mês, dentro de um ZIP.
+**Diferente das outras camadas `raw` acima, esta não é populada pelo fluxo
+padrão**: `clean_pni.py` (sem `--from-raw`) baixa cada mês direto da fonte
+para um temporário local e nunca grava aqui — ver `docs/decisoes_limpeza.md`
+(seção 2). Só existe se alguém rodar `download_pni.py` deliberadamente
+(ex.: para arquivar os ZIPs brutos).
 
 Nomes de coluna confirmados contra o schema real do PNI (rodando
 `clean_pni.py`/`inspect_pni.py` contra os dados baixados no Codespace,
