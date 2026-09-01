@@ -33,8 +33,9 @@ solução técnica) em
 - **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
 
 Por que cada fonte foi escolhida (e o que foi avaliado e descartado), o
-recorte geográfico (nacional) e temporal (ano completo de 2025), e a
-verificabilidade de cada fonte, estão detalhados em
+recorte geográfico (nacional) e temporal (ano completo de 2025), a
+verificabilidade de cada fonte, e os aspectos legais/éticos (LGPD) e
+vieses potenciais considerados, estão detalhados em
 [`docs/criterios_selecao_dados.md`](docs/criterios_selecao_dados.md).
 
 ## Arquitetura do Pipeline
