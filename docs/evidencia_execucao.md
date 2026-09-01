@@ -5,6 +5,41 @@ Este documento reúne evidências concretas de que o pipeline descrito em
 não só no papel. Os números abaixo vêm de execuções reais no ambiente de
 desenvolvimento (GitHub Codespaces + MinIO local via `docker-compose.yml`).
 
+## 0. Dataset bruto (raw) existe de verdade e é inspecionável
+
+O bucket `raw` do MinIO, listado diretamente via `boto3` (mesmo cliente que
+o código do projeto usa, `src/config.py`):
+
+```
+=== objetos em raw/ ===
+ibge/pib/ano=2023/pib_municipios.csv  (641961 bytes)
+ibge/populacao/ano=2024/populacao_municipios.csv  (572594 bytes)
+ibge/populacao/ano=2025/populacao_municipios.csv  (572594 bytes)
+```
+
+E o conteúdo real (primeiras linhas, sem nenhuma transformação) de um
+desses arquivos brutos — exatamente como a API do SIDRA devolve, incluindo
+a linha de metadados que `clean_ibge.py` precisa descartar (ver
+`docs/decisoes_limpeza.md`, seção 1):
+
+```
+=== primeiras 12 linhas de raw/ibge/populacao/ano=2024/populacao_municipios.csv ===
+NC,NN,MC,MN,V,D1C,D1N,D2C,D2N,D3C,D3N
+Nível Territorial (Código),Nível Territorial,Unidade de Medida (Código),Unidade de Medida,Valor,Município (Código),Município,Variável (Código),Variável,Ano (Código),Ano
+6,Município,45,Pessoas,22853,1100015,Alta Floresta D'Oeste - RO,9324,População residente estimada,2024,2024
+6,Município,45,Pessoas,108573,1100023,Ariquemes - RO,9324,População residente estimada,2024,2024
+6,Município,45,Pessoas,5690,1100031,Cabixi - RO,9324,População residente estimada,2024,2024
+6,Município,45,Pessoas,97637,1100049,Cacoal - RO,9324,População residente estimada,2024,2024
+```
+
+O `raw/ibge/pib/ano=2023/pib_municipios.csv` (641.961 bytes) segue o
+mesmo formato bruto da API SIDRA, documentado em
+`docs/dicionario_dados.md`. O PNI **não aparece aqui de propósito** — por
+padrão `clean_pni.py` não grava o ZIP bruto em `raw` (ver
+`docs/decisoes_limpeza.md`, seção 2, e `docs/criterios_selecao_dados.md`);
+quem quiser o ZIP bruto arquivado roda `download_pni.py` antes, o que o
+gravaria aqui do mesmo jeito que IBGE/PIB.
+
 ## 1. Volume de dado real processado (PNI, ano completo de 2025)
 
 Rodando `python -m src.cleaning.clean_pni --ano 2025` (fluxo padrão: baixa
