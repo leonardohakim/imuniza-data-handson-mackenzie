@@ -21,11 +21,21 @@ Utilizar engenharia de dados e análise de dados públicos para identificar muni
 
 A proposta busca transformar dados públicos, hoje dispersos e pouco explorados, em informação acionável para gestores de saúde pública, apoiando decisões sobre onde e para quem direcionar campanhas de imunização.
 
+Descrição detalhada do problema (o que já sabemos, o que ainda não
+sabemos, e as perguntas que o projeto se propõe a responder, sem entrar na
+solução técnica) em
+[`docs/entendimento_problema.md`](docs/entendimento_problema.md).
+
 ## Fontes de Dados
 
 - **DATASUS / TabNet (SI-PNI)**: Sistema de Informações do Programa Nacional de Imunizações
 - **OpenDataSUS**: bases granulares de doses aplicadas por município, período e faixa etária
 - **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
+
+Por que cada fonte foi escolhida (e o que foi avaliado e descartado), o
+recorte geográfico (nacional) e temporal (ano completo de 2025), e a
+verificabilidade de cada fonte, estão detalhados em
+[`docs/criterios_selecao_dados.md`](docs/criterios_selecao_dados.md).
 
 ## Arquitetura do Pipeline
 
@@ -45,9 +55,13 @@ refined:
 ```
 imuniza-data-handson-mackenzie/
 ├── docs/
+│   ├── entendimento_problema.md # Etapa 1: problema detalhado e perguntas de pesquisa
+│   ├── criterios_selecao_dados.md # Etapa 2: por que cada fonte foi escolhida, escopo geo/temporal
 │   ├── arquitetura_pipeline.svg # Diagrama de arquitetura (componentes e tecnologias)
 │   ├── dicionario_dados.md     # Schema de cada camada (raw/trusted/refined)
-│   └── decisoes_limpeza.md     # Decisões de limpeza documentadas e justificadas
+│   ├── decisoes_limpeza.md     # Decisões de limpeza documentadas e justificadas
+│   ├── evidencia_execucao.md   # Prova de execução real do pipeline ponta a ponta
+│   └── guia_setup_etapa2.md    # Passo a passo de reprodução, com troubleshooting
 ├── notebooks/                  # Notebooks de exploracao e prototipagem
 ├── src/
 │   ├── config.py                # Configuração de acesso ao MinIO
@@ -144,6 +158,9 @@ de problemas comuns) em
 Decisões de limpeza (o quê e por quê) estão documentadas em
 [`docs/decisoes_limpeza.md`](docs/decisoes_limpeza.md); o schema de cada
 camada de dado está em [`docs/dicionario_dados.md`](docs/dicionario_dados.md).
+Evidência de que o pipeline roda de ponta a ponta contra dado real
+(volumes processados, testes, notebook executado, histórico de commits)
+está em [`docs/evidencia_execucao.md`](docs/evidencia_execucao.md).
 
 Os nomes de coluna do CSV do PNI usados em `src/cleaning/clean_pni.py`
 foram definidos sem acesso aos dados reais (ambiente de desenvolvimento sem

@@ -19,19 +19,22 @@
 <text x="592" y="125" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#1A1A1A">CSV ";", encoding latin1</text>
 <line x1="227" y1="134" x2="227" y2="180" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
 <text x="239" y="161.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">requests.get()</text>
-<line x1="592" y1="134" x2="592" y2="180" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="604" y="161.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">requests.get()</text>
+<line x1="592" y1="134" x2="592" y2="180" stroke="#8A8A8A" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#arrow-dash)"/>
+<text x="604" y="161.0" font-family="Arial, Helvetica, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">requests.get() (opcional,</text>
+<text x="604" y="174.0" font-family="Arial, Helvetica, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">download_pni.py)</text>
 <rect x="60" y="180" width="700" height="92" rx="10" ry="10" fill="#DCEEF7" stroke="#1F6FA8" stroke-width="2"/>
 <text x="410.0" y="204" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Ingestão: src/ingestion/  (Python + requests)</text>
-<text x="410.0" y="223" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#1A1A1A">download_ibge.py · download_pib.py · download_pni.py</text>
+<text x="410.0" y="223" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#1A1A1A">download_ibge.py · download_pib.py · download_pni.py (opcional)</text>
 <text x="410.0" y="242" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#1A1A1A">stream-unzip (PNI, streaming, sem carregar o ZIP inteiro em memória)</text>
 <line x1="410.0" y1="272" x2="410.0" y2="318" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="422.0" y="299.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">grava (boto3 / API S3)</text>
+<text x="422.0" y="299.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">grava (boto3 / API S3) — PNI só se</text>
+<text x="422.0" y="312.0" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">download_pni.py for usado</text>
 <rect x="60" y="318" width="700" height="68" rx="10" ry="10" fill="#DFF3EC" stroke="#1F8A70" stroke-width="2"/>
 <text x="410.0" y="348" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="bold" text-anchor="middle" fill="#1A1A1A">MinIO: bucket "raw"</text>
 <text x="410.0" y="368" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#1A1A1A">dado bruto: CSV da SIDRA, ZIP do OpenDataSUS (sem transformação)</text>
 <line x1="410.0" y1="386" x2="410.0" y2="432" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="422.0" y="413.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">lê (boto3, streaming p/ PNI)</text>
+<text x="422.0" y="413.0" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">lê (boto3) — IBGE/PIB sempre;</text>
+<text x="422.0" y="425.0" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" text-anchor="start" fill="#444444" font-style="italic">PNI só com --from-raw</text>
 <rect x="60" y="432" width="700" height="92" rx="10" ry="10" fill="#DCEEF7" stroke="#1F6FA8" stroke-width="2"/>
 <text x="410.0" y="456" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#1A1A1A">Limpeza: src/cleaning/  (Python + pandas + boto3)</text>
 <text x="410.0" y="475" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#1A1A1A">clean_ibge.py · clean_pib.py · clean_pni.py</text>
@@ -82,4 +85,12 @@
 <text x="1030.0" y="581" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#1A1A1A">.github/workflows/tests.yml</text>
 <line x1="760" y1="478" x2="820" y2="478" stroke="#8A8A8A" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#arrow-dash)"/>
 <line x1="760" y1="724" x2="820" y2="724" stroke="#8A8A8A" stroke-width="1.6" stroke-dasharray="4,4" marker-end="url(#arrow-dash)"/>
+<!-- Caminho padrão do PNI: direto da fonte para a limpeza, sem passar por raw -->
+<line x1="760" y1="134" x2="792" y2="134" stroke="#1F6FA8" stroke-width="2"/>
+<line x1="792" y1="134" x2="792" y2="450" stroke="#1F6FA8" stroke-width="2"/>
+<line x1="792" y1="450" x2="763" y2="450" stroke="#1F6FA8" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="798" y="260" font-family="Arial, Helvetica, sans-serif" font-size="11.5" font-weight="bold" text-anchor="start" fill="#1F6FA8">PNI (fluxo padrão)</text>
+<text x="798" y="275" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" text-anchor="start" fill="#1F6FA8">clean_pni.py: baixa direto</text>
+<text x="798" y="288" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" text-anchor="start" fill="#1F6FA8">da fonte e limpa, sem gravar</text>
+<text x="798" y="301" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" text-anchor="start" fill="#1F6FA8">o ZIP bruto em "raw"</text>
 </svg>
