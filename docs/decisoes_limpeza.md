@@ -1,7 +1,20 @@
 # Decisões de Limpeza e Pré-Processamento (Etapa 2)
 
 Registro das decisões tomadas na limpeza (raw → trusted → refined), com a
-justificativa de cada uma:
+justificativa de cada uma. Toda decisão nesta página existe para servir à
+métrica central do projeto — cobertura vacinal por município (ver
+`docs/entendimento_problema.md`) — e à confiabilidade de comparar
+municípios entre si: um erro de limpeza não detectado se propaga direto
+para a priorização de onde fazer campanhas de vacinação.
+
+## Abordagens de pré-processamento utilizadas
+
+| Abordagem | Aplicada? | Onde / justificativa |
+|---|---|---|
+| **Limpeza** (remoção de linhas inválidas/duplicadas, tratamento de ausentes, padronização de tipos e códigos) | Sim, extensivamente | Todas as seções abaixo (1-4): descarte de municípios sem população, validação de código de município, datas inválidas, duplicatas exatas, etc. |
+| **Transformação** (derivação de novas colunas/valores a partir dos originais) | Sim | Resolução dinâmica de nomes de coluna do PNI (seção 2), conversão de código DATASUS (6 dígitos) para o padrão IBGE (7 dígitos) no cruzamento (seção 2 e 4), agregação de nível-paciente (uma linha por dose) para nível-município×mês (seção 2), cálculo de `cobertura_doses_por_100_habitantes` e `pib_per_capita_reais` (seção 3 e 4). |
+| **Amostragem** (reduzir o volume processando só uma parte dos dados) | **Não** | O objetivo do projeto é cobertura *nacional completa* (todos os municípios, ano inteiro de 2025) — amostrar um subconjunto de municípios ou meses reduziria exatamente a abrangência que o projeto busca (ver `docs/criterios_selecao_dados.md`, escopo geográfico/temporal). O processamento em blocos/streaming (seção 2) é uma técnica de *implementação* para caber na memória disponível, não uma amostragem: 100% dos registros de cada arquivo são lidos e agregados, só não ficam todos em RAM ao mesmo tempo. |
+| **Desbalanceamento de classes** | **Não se aplica nesta etapa** | É uma técnica de preparação de dados para classificação supervisionada (ex.: se a classe "baixa cobertura" for rara no conjunto de treino de um classificador). Esta é a Etapa 2, descritiva/analítica — ainda não há um modelo supervisionado sendo treinado. Será reavaliada na Etapa 3 (classificação, ver `README.md`) se o desbalanceamento da variável-alvo se mostrar um problema real ali. |
 
 ## 1. Dados de população (IBGE)
 
