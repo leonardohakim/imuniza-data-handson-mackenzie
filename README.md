@@ -61,9 +61,10 @@ imuniza-data-handson-mackenzie/
 │   ├── arquitetura_pipeline.svg # Diagrama de arquitetura (componentes e tecnologias)
 │   ├── dicionario_dados.md     # Schema de cada camada (raw/trusted/refined)
 │   ├── decisoes_limpeza.md     # Decisões de limpeza documentadas e justificadas
+│   ├── decisoes_modelagem.md   # Etapa 3: alvo, algoritmos, split, métricas, limitações
 │   ├── evidencia_execucao.md   # Prova de execução real do pipeline ponta a ponta
 │   └── guia_setup_etapa2.md    # Passo a passo de reprodução, com troubleshooting
-├── notebooks/                  # Notebooks de exploracao e prototipagem
+├── notebooks/                  # Notebooks de exploracao, prototipagem e modelagem
 ├── src/
 │   ├── config.py                # Configuração de acesso ao MinIO
 │   ├── validate_setup.py        # Healthcheck do MinIO e das fontes externas
@@ -92,15 +93,16 @@ Coleta programática de dados de vacinação (SI-PNI/OpenDataSUS) e dados demogr
 Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valores ausentes e inconsistências, e construção da métrica central de cobertura vacinal (doses aplicadas / população-alvo). Identificação de outliers e análise de correlação com variáveis socioeconômicas.
 
 ### Etapa 3: Aplicação de ML e Treinamento de Modelos
-- **Clusterização** (K-Means/DBSCAN) para segmentar municípios por perfil de cobertura vacinal e características socioeconômicas
-- **Classificação** (Random Forest/XGBoost) para prever risco de baixa cobertura vacinal futura
-- Análise de importância de features para identificar fatores associados à baixa cobertura
+- **Classificação** de risco de baixa cobertura (alvo: abaixo do 1º quartil nacional) com quatro modelos comparados — Regressão Logística, KNN, Random Forest e XGBoost — com ajuste de hiperparâmetros (`GridSearchCV`) e tratamento explícito do desbalanceamento de classes
+- **Clusterização** (K-Means, k escolhido por silhouette score) para segmentar municípios por perfil de cobertura e características socioeconômicas
+- Matriz de comparação de modelos, matriz de confusão, curva ROC, importância de features e checagem de overfitting (treino vs. validação)
+- Escopo **transversal** (um único ano, 2025), não temporal — ver `docs/decisoes_modelagem.md` sobre por que "prever risco futuro" exigiria um segundo ano de dados que ainda não temos
 
 ## Tecnologias
 
-- Python (pandas, numpy, scikit-learn, requests)
+- Python (pandas, numpy, scikit-learn, xgboost, requests)
 - Jupyter Notebook
-- Matplotlib / Seaborn / Plotly
+- Matplotlib / Seaborn
 
 ## Como Executar
 
@@ -155,6 +157,16 @@ nesta sessão (ver `docs/decisoes_limpeza.md`, seção 8).
 Guia passo a passo completo (do zero até o final da Etapa 2, com solução
 de problemas comuns) em
 [`docs/guia_setup_etapa2.md`](docs/guia_setup_etapa2.md).
+
+### Etapa 3: Construção de Modelos
+
+```bash
+jupyter notebook notebooks/03_construcao_modelos.ipynb
+```
+
+Depende só do `refined/cobertura_vacinal` já gerado pela Etapa 2 (mesmos
+comandos acima). Decisões de alvo, algoritmos, split e limitações em
+[`docs/decisoes_modelagem.md`](docs/decisoes_modelagem.md).
 
 Decisões de limpeza (o quê e por quê) estão documentadas em
 [`docs/decisoes_limpeza.md`](docs/decisoes_limpeza.md); o schema de cada

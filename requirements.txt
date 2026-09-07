@@ -8,3 +8,5 @@ jupyter==1.1.1
 stream-unzip==0.0.101
 pytest==9.1.1
 scipy==1.18.1
+scikit-learn==1.8.0
+xgboost==3.2.0

@@ -146,3 +146,19 @@ Uma linha por município, IBGE + PNI já cruzados:
 | `cobertura_doses_por_100_habitantes` | float | `doses_aplicadas / populacao * 100`; ver limitação de interpretação em `src/cleaning/build_coverage.py` (é um proxy de intensidade de vacinação, não de % de pessoas efetivamente imunizadas, por causa de esquemas multidose) |
 | `pib_mil_reais` | float (opcional) | PIB total do município em Mil Reais, ano de referência 2023 (`--ano-pib`, ver `docs/decisoes_limpeza.md` seção 3); `NaN` quando o município não tem PIB no trusted, e a coluna toda fica ausente se `clean_pib.py` ainda não rodou |
 | `pib_per_capita_reais` | float (opcional) | `pib_mil_reais * 1000 / populacao`, calculado em `build_coverage.py`; mesma condição de ausência da coluna acima |
+
+## Camada de modelagem (Etapa 3, derivada em notebook — não persistida no MinIO)
+
+Colunas calculadas em `notebooks/03_construcao_modelos.ipynb` a partir do
+`refined/cobertura_vacinal`, só em memória (não gravadas em nenhum bucket).
+Justificativa de cada uma em `docs/decisoes_modelagem.md`.
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `uf` | string | Sigla da UF, extraída de `municipio` (`"Nome - UF"`) |
+| `fronteira` | int (0/1) | `1` se a UF do município está entre as 11 da faixa de fronteira (Lei 6.634/1979: AC, AP, AM, MT, MS, PA, PR, RS, RO, RR, SC) — aproximação por UF, não pela lista oficial de municípios |
+| `regiao` | string | Macrorregião (Norte/Nordeste/Centro-Oeste/Sudeste/Sul), derivada da UF |
+| `log_populacao` | float | `log1p(populacao)` |
+| `log_pib_per_capita` | float | `log1p(pib_per_capita_reais)` |
+| `baixa_cobertura` | int (0/1) | Alvo de classificação: `1` se `cobertura_doses_por_100_habitantes` está abaixo do 1º quartil nacional |
+| `cluster` | int | Rótulo do K-Means (segmentação por perfil), não usado como feature de classificação |
