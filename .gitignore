@@ -6,3 +6,6 @@ __pycache__/
 *.parquet
 minio_data/
 .venv/
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
