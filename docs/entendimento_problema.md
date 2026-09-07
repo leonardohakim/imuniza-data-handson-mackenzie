@@ -67,7 +67,10 @@ seja feita com base em dado, não em suposição.
 5. *(Direção para a Etapa 3, fora do escopo desta fase)* É possível
    segmentar ou prever, a partir de características demográficas e
    socioeconômicas, quais municípios têm maior risco de baixa cobertura no
-   próximo ciclo?
+   próximo ciclo? *(A Etapa 3 endereça uma versão adaptada desta pergunta —
+   classificação transversal, não previsão temporal, pela limitação de só
+   termos um ano de dado processado; ver justificativa completa em
+   [`docs/decisoes_modelagem.md`](decisoes_modelagem.md).)*
 
 ## Fora de escopo nesta etapa
 
@@ -76,9 +79,10 @@ resolvê-lo tecnicamente. As decisões de quais fontes de dado usar, como
 elas serão coletadas, limpas e armazenadas, e quais ferramentas
 implementam isso, estão documentadas separadamente em
 [`docs/criterios_selecao_dados.md`](criterios_selecao_dados.md) (Etapa 2:
-critérios de seleção) e [`docs/decisoes_limpeza.md`](decisoes_limpeza.md)
-(Etapa 2: pré-processamento) — a arquitetura completa da solução está no
-diagrama em [`docs/arquitetura_pipeline.svg`](arquitetura_pipeline.svg).
+critérios de seleção), [`docs/decisoes_limpeza.md`](decisoes_limpeza.md)
+(Etapa 2: pré-processamento) e [`docs/decisoes_modelagem.md`](decisoes_modelagem.md)
+(Etapa 3: modelagem) — a arquitetura completa da solução está no diagrama
+em [`docs/arquitetura_pipeline.svg`](arquitetura_pipeline.svg).
 
 ## Equipe
 

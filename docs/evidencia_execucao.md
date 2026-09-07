@@ -66,9 +66,10 @@ depender de MinIO ou rede. Rodam localmente com:
 python -m pytest tests/ -v
 ```
 
-e automaticamente a cada `push`/pull request na branch `main`, via GitHub
-Actions (`.github/workflows/tests.yml`) — o selo no topo do `README.md`
-reflete o status da última execução no repositório real:
+e automaticamente a cada `push`/pull request nas branches `main` e
+`etapa-*` (ex.: `etapa-2`), via GitHub Actions
+(`.github/workflows/tests.yml`) — o selo no topo do `README.md` reflete o
+status da última execução no repositório real:
 `https://github.com/leonardohakim/imuniza-data-handson-mackenzie/actions/workflows/tests.yml`.
 
 ## 3. Notebook de análise exploratória executado contra dado real
@@ -125,7 +126,56 @@ e0188ed fix: incorpora reprocessar_pni_2025.py a clean_pni.py como fluxo padrao
 Repositório real:
 `https://github.com/leonardohakim/imuniza-data-handson-mackenzie`
 
-## 5. Como reproduzir do zero
+## 5. Notebook de construção de modelos (Etapa 3) executado contra dado real
+
+`notebooks/03_construcao_modelos.ipynb` também está commitado com os
+outputs de uma execução real contra o
+`refined/cobertura_vacinal/ano=2025/cobertura_municipios.parquet` gerado
+pelo pipeline (5.571 municípios, 1 descartado por falta de alguma das
+colunas usadas como feature). Números reais dessa execução:
+
+- **Alvo (`baixa_cobertura`)**: 1º quartil nacional de
+  `cobertura_doses_por_100_habitantes` = **73,24 doses/100 hab.**
+- **Split treino/validação/teste**: 3.899 / 835 / 836 municípios
+  (70/15/15, estratificado — proporção de positivos = 0,250 nos três
+  conjuntos).
+- **Comparação dos 4 modelos (F1 na validação, `GridSearchCV` 5-fold)**:
+  Random Forest 0,452 (melhor), Regressão Logística 0,450 (margem muito
+  pequena para o Random Forest — vale considerar se a perda de
+  interpretabilidade compensa), XGBoost 0,434, KNN 0,236 (maior acurácia,
+  0,705, mas menor recall, 0,182 — sintoma clássico de desbalanceamento
+  de classes mal tratado por esse modelo em particular).
+- **Modelo escolhido (Random Forest) no conjunto de teste**: F1 = 0,390,
+  ROC-AUC = 0,582.
+- **Checagem de overfitting** (gap treino−validação): Regressão Logística
+  -0,035 (pequeno), KNN +0,209 (grande — sinal de overfitting), Random
+  Forest -0,008 (pequeno), XGBoost +0,083 (moderado).
+- **Clusterização (K-Means, k=3 escolhido por silhouette score)**: o
+  cluster de maior cobertura média (95,61 doses/100 hab.) também é o de
+  menor população mediana (5.709 habitantes) entre os três — o notebook
+  sinaliza automaticamente, quando isso acontece, que a métrica de
+  cobertura é mais volátil em municípios pequenos (achado já registrado
+  na seção 5 do notebook 02), então essa cobertura mais alta pode ser em
+  parte esse efeito de volatilidade, não necessariamente melhor acesso
+  real à vacinação.
+
+Todas as decisões por trás desses números (definição do alvo, escolha dos
+4 algoritmos, tratamento de desbalanceamento, métricas) estão
+documentadas e justificadas em
+[`docs/decisoes_modelagem.md`](decisoes_modelagem.md).
+
+**Bug real encontrado e corrigido ao rodar contra o Codespace**: a
+primeira versão do notebook configurava tanto o `GridSearchCV`
+(`n_jobs=-1`) quanto os próprios estimadores `RandomForestClassifier` e
+`XGBClassifier` (também `n_jobs=-1`) para paralelizar — esse paralelismo
+aninhado (dois níveis de processos/threads disputando os mesmos núcleos)
+travou o terminal do Codespace ao rodar `jupyter nbconvert --execute`,
+pela restrição de CPU do ambiente. Corrigido fixando `n_jobs=1` nos
+estimadores e mantendo o paralelismo só no `GridSearchCV`; reexecutado com
+sucesso, sem travar, na tentativa seguinte. Relato completo em
+`docs/decisoes_modelagem.md`, seção 4.1.
+
+## 6. Como reproduzir do zero
 
 Passo a passo completo, incluindo troubleshooting de problemas reais já
 encontrados pela equipe (disco cheio, bucket com nome errado, coluna

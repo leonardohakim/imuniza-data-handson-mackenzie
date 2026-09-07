@@ -187,10 +187,11 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-Os testes rodam automaticamente a cada `push`/`pull request` na branch `main`
-via GitHub Actions (`.github/workflows/tests.yml`), sem dependência de MinIO
-ou rede: cobrem apenas as funções puras de limpeza e cruzamento de dados
-(ver decisão de arquitetura em `docs/decisoes_limpeza.md`).
+Os testes rodam automaticamente a cada `push`/`pull request` nas branches
+`main` e `etapa-*` (ex.: `etapa-2`) via GitHub Actions
+(`.github/workflows/tests.yml`), sem dependência de MinIO ou rede: cobrem
+apenas as funções puras de limpeza e cruzamento de dados (ver decisão de
+arquitetura em `docs/decisoes_limpeza.md`).
 
 ## Licença
 

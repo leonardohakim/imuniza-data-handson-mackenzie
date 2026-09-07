@@ -1,9 +1,14 @@
 # Guia de Setup — ImunizaData (Codespace)
 
 Guia passo a passo para colocar o projeto de pé dentro do GitHub Codespaces,
-da inicialização até o final da Etapa 2 (análise exploratória). Pensado
-para qualquer pessoa da equipe rodar do zero, sem depender de contexto que
-só quem já mexeu no projeto tem.
+da inicialização até o final da Etapa 2 (análise exploratória), com um
+passo adicional (6.1) cobrindo também a Etapa 3 (construção de modelos).
+Pensado para qualquer pessoa da equipe rodar do zero, sem depender de
+contexto que só quem já mexeu no projeto tem.
+
+*(Nota: o nome do arquivo ficou de quando o guia cobria só até a Etapa 2;
+mantido assim para não quebrar os links já existentes no README e em
+outros documentos — o conteúdo abaixo já inclui a Etapa 3.)*
 
 Cada bloco de comandos é independente: se travar em algum passo, o bloco
 "Solução de problemas comuns" no final cobre os erros reais que já
@@ -104,9 +109,9 @@ python -m pytest tests/ -v
 
 Esperado: **37 passed**. Os testes não dependem de MinIO nem rede (só
 funções puras de limpeza/cruzamento), então rodam em menos de 2 segundos.
-Também rodam automaticamente a cada `push`/`pull request` na `main` via
-GitHub Actions — confira o badge no topo do README ou a aba **Actions** do
-repositório.
+Também rodam automaticamente a cada `push`/`pull request` nas branches
+`main` e `etapa-*` (ex.: `etapa-2`) via GitHub Actions — confira o badge no
+topo do README ou a aba **Actions** do repositório.
 
 ## 6. Notebook de análise exploratória
 
@@ -122,6 +127,21 @@ rodar interativamente em vez de via linha de comando:
 ```bash
 jupyter notebook notebooks/02_analise_exploratoria.ipynb
 ```
+
+## 6.1. Etapa 3 — Construção de modelos (opcional, depois da Etapa 2 completa)
+
+```bash
+jupyter notebook notebooks/03_construcao_modelos.ipynb
+```
+
+Depende só do `refined/cobertura_vacinal` já gerado no passo 4 (`scikit-learn`
+e `xgboost` já entram com `pip install -r requirements.txt` no passo 1, não
+precisa instalar nada a mais). Roda 4 modelos de classificação (Regressão
+Logística, KNN, Random Forest, XGBoost) com `GridSearchCV` e uma
+clusterização K-Means; decisões de alvo, algoritmos, split e limitações em
+[`docs/decisoes_modelagem.md`](decisoes_modelagem.md). **Atenção**: veja o
+item sobre paralelismo aninhado na seção 9 abaixo antes de rodar via
+`nbconvert --execute` — é um bug real já enfrentado nesta sessão.
 
 ## 7. Publicar as mudanças
 
@@ -147,6 +167,7 @@ está renderizando certo.
 - [ ] Notebook executado de ponta a ponta sem erro
 - [ ] README renderizando o diagrama de arquitetura (`docs/arquitetura_pipeline.svg`)
 - [ ] `docs/decisoes_limpeza.md` e `docs/dicionario_dados.md` consistentes com o código atual
+- [ ] (Etapa 3, opcional) `notebooks/03_construcao_modelos.ipynb` executado de ponta a ponta sem erro, sem travar o terminal (ver seção 9 sobre paralelismo aninhado)
 
 ## 9. Solução de problemas comuns
 
@@ -205,6 +226,21 @@ confira em qual partição (`ano={ano}` no MinIO) o script que você rodou
 realmente lê e grava, e reprocesse exatamente essa partição. Ver a nota do
 passo 4 acima; é um erro fácil de cometer e difícil de perceber, porque o
 comando roda sem erro nenhum.
+
+**Terminal do Codespace trava (sem erro, sem retorno) ao rodar
+`jupyter nbconvert --execute` no notebook 03 (construção de modelos)** —
+paralelismo aninhado: o `GridSearchCV(n_jobs=-1)` já paraleliza a busca de
+hiperparâmetros, e se o estimador dentro dele (`RandomForestClassifier`
+ou `XGBClassifier`) **também** estiver com `n_jobs=-1`, os dois níveis de
+paralelismo disputam os mesmos núcleos e travam o ambiente — especialmente
+grave em Codespaces, onde a CPU disponível de verdade (cgroup) costuma ser
+menor do que `os.cpu_count()` reporta. Isso já travou o terminal nesta
+sessão. Fix: mantenha só um nível de paralelismo, deixando
+`GridSearchCV(n_jobs=-1)` e os estimadores com `n_jobs=1`. A versão do
+notebook já commitada no repositório já está corrigida (`n_jobs=1` nos
+estimadores); se você escreveu um `MODELOS`/`Pipeline` novo do zero, vale
+não repetir o erro. Relato completo em `docs/decisoes_modelagem.md`,
+seção 4.1.
 
 **Disco cheio (`No space left on device`) ao processar o PNI** — quase
 sempre é ter rodado `download_pni.py` para os 12 meses antes de limpar

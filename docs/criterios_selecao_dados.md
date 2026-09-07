@@ -154,7 +154,11 @@ documentada:
   vulnerabilidade social — um município pode ter PIB per capita alto e
   ainda assim desigualdade interna relevante que essa única variável não
   captura. Essa limitação deve ser considerada ao interpretar qualquer
-  correlação cobertura × PIB na análise exploratória.
+  correlação cobertura × PIB na análise exploratória. O mesmo viés se
+  propaga para a Etapa 3: `log_pib_per_capita` é usada como feature dos
+  modelos de classificação, então qualquer viés desse proxy também limita
+  a interpretação dos coeficientes/importâncias de feature — ver
+  `docs/decisoes_modelagem.md`, seção "Interpretação final".
 
 ## Critérios de inclusão/exclusão de registros
 
