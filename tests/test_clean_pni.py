@@ -20,6 +20,7 @@ from src.cleaning.clean_pni import (
     CleaningReport,
     _clean_and_aggregate_chunk,
     _iter_csv_chunks_from_zip,
+    _resolve_columns,
     clean_month_stream,
     meses_faltantes,
     parse_application_dates,
@@ -47,6 +48,28 @@ def test_resolve_column_falha_de_forma_explicita_com_colunas_disponiveis_na_mens
         resolve_column(df, "data_aplicacao")
     # a mensagem de erro precisa listar as colunas reais, pra debugar rápido
     assert "coluna_completamente_diferente" in str(exc_info.value)
+
+
+# --- _resolve_columns -----------------------------------------------------
+
+def test_resolve_columns_nao_falha_quando_vacina_nome_esta_ausente():
+    # Bug real encontrado nesta auditoria: `vacina_nome` era resolvida como
+    # obrigatória aqui, mas o resto do pipeline (`_clean_and_aggregate_chunk`,
+    # `_combine_partial_aggregates`) já trata sua ausência como opcional via
+    # `resolved.get("vacina_nome")` — um mês sem essa coluna no CSV (schema
+    # futuro diferente) levantava KeyError e o mês inteiro era descartado
+    # como [FALHOU], mesmo o pipeline estando pronto para lidar com isso.
+    df = pd.DataFrame(columns=["co_municipio_paciente", "dt_vacina"])
+    resolved = _resolve_columns(df)
+    assert resolved["vacina_nome"] is None
+    assert resolved["codigo_municipio"] == "co_municipio_paciente"
+    assert resolved["data_aplicacao"] == "dt_vacina"
+
+
+def test_resolve_columns_usa_vacina_nome_quando_presente():
+    df = pd.DataFrame(columns=["co_municipio_paciente", "dt_vacina", "sg_imunobiologico"])
+    resolved = _resolve_columns(df)
+    assert resolved["vacina_nome"] == "sg_imunobiologico"
 
 
 # --- parse_application_dates --------------------------------------------

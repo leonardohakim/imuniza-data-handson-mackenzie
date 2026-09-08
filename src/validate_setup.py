@@ -3,6 +3,7 @@
 import os
 import sys
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 import boto3
@@ -15,8 +16,16 @@ except ModuleNotFoundError:
     from config import MINIO_ACCESS_KEY, MINIO_ENDPOINT, MINIO_SECRET_KEY
 
 
-MINIO_HOST = os.getenv("MINIO_HOST", "localhost")
-MINIO_API_PORT = os.getenv("MINIO_API_PORT", "9000")
+# Host/porta derivados de MINIO_ENDPOINT (a mesma fonte de verdade usada por
+# todo o resto do pipeline via src/config.py), não reconstruídos de variáveis
+# de ambiente separadas — antes, MINIO_HOST/MINIO_API_PORT ignoravam
+# MINIO_ENDPOINT completamente: configurar um MinIO não-padrão só por
+# MINIO_ENDPOINT não tinha efeito nenhum aqui. MINIO_HOST/MINIO_API_PORT
+# continuam disponíveis como override direto, para quem preferir configurar
+# assim em vez de MINIO_ENDPOINT.
+_endpoint_parsed = urlparse(MINIO_ENDPOINT)
+MINIO_HOST = os.getenv("MINIO_HOST", _endpoint_parsed.hostname or "localhost")
+MINIO_API_PORT = os.getenv("MINIO_API_PORT", str(_endpoint_parsed.port or 9000))
 MINIO_CONSOLE_PORT = os.getenv("MINIO_CONSOLE_PORT", "9001")
 MINIO_BUCKETS = ("raw", "trusted", "refined")
 
@@ -40,7 +49,7 @@ def check_endpoint(name: str, url: str) -> bool:
 def check_minio_buckets() -> bool:
     s3 = boto3.client(
         "s3",
-        endpoint_url=f"http://{MINIO_HOST}:{MINIO_API_PORT}",
+        endpoint_url=MINIO_ENDPOINT,
         aws_access_key_id=MINIO_ACCESS_KEY,
         aws_secret_access_key=MINIO_SECRET_KEY,
         config=Config(signature_version="s3v4"),

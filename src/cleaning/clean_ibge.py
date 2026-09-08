@@ -179,5 +179,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Limpa a população municipal (raw -> trusted) no MinIO"
     )
-    parser.add_argument("--ano", type=int, default=2024)
+    # Default alinhado com build_coverage.py/clean_pni.py (2025): usar anos
+    # diferentes aqui e em build_coverage.py já causou um bug real
+    # (build_coverage lendo uma partição de população desatualizada/inexistente
+    # sem erro nenhum visível — ver docs/decisoes_limpeza.md, seção 8).
+    parser.add_argument("--ano", type=int, default=2025)
     clean_and_upload(parser.parse_args().ano)

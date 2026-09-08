@@ -10,7 +10,7 @@ mais de 1 milhão de linhas de doses já processadas. Ver
 
 import pandas as pd
 
-from src.cleaning.build_coverage import compute_coverage
+from src.cleaning.build_coverage import compute_coverage, doses_sem_municipio_correspondente
 
 
 def _populacao():
@@ -105,6 +105,34 @@ def test_pib_per_capita_e_calculado_corretamente():
     alta_floresta = coverage.set_index("codigo_municipio").loc["1100015"]
     assert alta_floresta["pib_mil_reais"] == 22787.0
     assert alta_floresta["pib_per_capita_reais"] == 1000.0
+
+
+# --- doses sem município correspondente (achado na auditoria) ------------
+
+def test_doses_sem_municipio_correspondente_detecta_codigo_sem_match():
+    # Bug real encontrado nesta auditoria: compute_coverage faz um LEFT JOIN
+    # a partir da população, então uma linha de doses com código inválido/sem
+    # correspondência é descartada silenciosamente pelo merge, sem contagem
+    # nem aviso nenhum — diferente do caso "município sem dose" (sem_dados_pni),
+    # que é contado explicitamente.
+    doses = pd.DataFrame({
+        "codigo_municipio": ["110001", "999999"],  # "999999" não existe na população
+        "doses_aplicadas": [10, 50],
+    })
+
+    municipios_sem_match, doses_perdidas = doses_sem_municipio_correspondente(_populacao(), doses)
+
+    assert municipios_sem_match == 1
+    assert doses_perdidas == 50
+
+
+def test_doses_sem_municipio_correspondente_zero_quando_tudo_bate():
+    municipios_sem_match, doses_perdidas = doses_sem_municipio_correspondente(
+        _populacao(), _doses_minimas()
+    )
+
+    assert municipios_sem_match == 0
+    assert doses_perdidas == 0
 
 
 def test_municipio_sem_pib_fica_com_nan_nao_com_zero():

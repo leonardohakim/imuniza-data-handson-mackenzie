@@ -108,6 +108,31 @@ def compute_coverage(
     return coverage
 
 
+def doses_sem_municipio_correspondente(
+    populacao: pd.DataFrame, doses: pd.DataFrame
+) -> tuple[int, int]:
+    """Conta quantos códigos de município do PNI (doses) não têm nenhuma
+    correspondência na população do IBGE, e quantas doses isso representa.
+
+    `compute_coverage` faz um LEFT JOIN a partir da população — qualquer
+    linha de `doses` cujo código de 6 dígitos (DATASUS) não bate com nenhum
+    `codigo_municipio_datasus` da população é **silenciosamente descartada**
+    pelo merge (diferente do caso "município sem dose", que é contado
+    explicitamente como `sem_dados_pni`). Isso pode acontecer por código
+    inválido/typo no PNI, ou um município descontinuado/fora do range
+    esperado. Função separada e pura para poder ser chamada só para fins de
+    diagnóstico/log, sem mudar o formato de retorno de `compute_coverage`
+    (usado por todos os testes existentes)."""
+    populacao_codigos = set(populacao["codigo_municipio"].str[:6])
+    doses_por_municipio = (
+        doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
+    )
+    sem_match = ~doses_por_municipio["codigo_municipio"].isin(populacao_codigos)
+    municipios_sem_match = int(sem_match.sum())
+    doses_perdidas = int(doses_por_municipio.loc[sem_match, "doses_aplicadas"].sum())
+    return municipios_sem_match, doses_perdidas
+
+
 def build_coverage(ano: int, ano_pib: int | None = None) -> pd.DataFrame:
     s3 = get_s3_client()
 
@@ -147,12 +172,22 @@ def build_coverage(ano: int, ano_pib: int | None = None) -> pd.DataFrame:
     # "sem dado de vacinação" é, em si, um sinal relevante para o objetivo
     # do projeto (identificar áreas com baixa cobertura).
     sem_dados_pni = coverage["doses_aplicadas"].eq(0).sum()
+    municipios_sem_match, doses_perdidas = doses_sem_municipio_correspondente(populacao, doses)
 
     outliers_baixos = coverage.nsmallest(10, "cobertura_doses_por_100_habitantes")
     outliers_altos = coverage.nlargest(10, "cobertura_doses_por_100_habitantes")
 
     print(f"[INFO] {len(coverage)} municípios no dataset refinado")
     print(f"[INFO] {sem_dados_pni} municípios sem nenhuma dose registrada no PNI para {ano}")
+    if municipios_sem_match:
+        print(
+            f"[AVISO] {municipios_sem_match} código(s) de município do PNI sem "
+            f"correspondência na população do IBGE ({doses_perdidas} doses "
+            "descartadas do cruzamento, silenciosamente pelo merge) — possível "
+            "código inválido/typo no PNI ou município fora do cadastro do IBGE "
+            "para este ano. Vale investigar antes de considerar o total de "
+            "doses do dataset refinado como completo."
+        )
     print("\n[INFO] 10 municípios com menor cobertura (doses/100 hab.):")
     print(outliers_baixos[["codigo_municipio", "municipio", "populacao", "doses_aplicadas", "cobertura_doses_por_100_habitantes"]])
     print("\n[INFO] 10 municípios com maior cobertura (doses/100 hab.) — checar se são polos regionais:")

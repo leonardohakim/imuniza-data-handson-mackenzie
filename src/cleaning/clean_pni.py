@@ -285,9 +285,16 @@ def _local_byte_chunks(path: Path, chunk_size: int = S3_READ_CHUNK_SIZE):
 def _resolve_columns(sample_df: pd.DataFrame) -> dict:
     resolved = {
         field_name: resolve_column(sample_df, field_name)
-        for field_name in ("codigo_municipio", "data_aplicacao", "vacina_nome")
+        for field_name in ("codigo_municipio", "data_aplicacao")
     }
-    for field_name in ("dose", "paciente_idade"):
+    # `vacina_nome`, assim como `dose` e `paciente_idade`, é tratada como
+    # opcional: `_clean_and_aggregate_chunk`/`_combine_partial_aggregates` já
+    # fazem `resolved.get("vacina_nome")` (agregam sem essa dimensão quando
+    # ausente) — mas antes desta correção, se a coluna não existisse no CSV
+    # de um mês/ano futuro, `resolve_column` levantava `KeyError` aqui e o
+    # mês inteiro era descartado como `[FALHOU]`, mesmo o pipeline estando
+    # pronto para lidar com a ausência. Ver `docs/decisoes_limpeza.md`.
+    for field_name in ("vacina_nome", "dose", "paciente_idade"):
         try:
             resolved[field_name] = resolve_column(sample_df, field_name)
         except KeyError:
