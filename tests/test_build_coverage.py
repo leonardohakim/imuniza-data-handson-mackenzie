@@ -126,6 +126,43 @@ def test_doses_sem_municipio_correspondente_detecta_codigo_sem_match():
     assert doses_perdidas == 50
 
 
+# --- área territorial / densidade demográfica (opcional) -----------------
+
+def test_sem_area_nao_adiciona_colunas_de_area():
+    coverage = compute_coverage(_populacao(), _doses_minimas(), area=None)
+
+    assert "area_km2" not in coverage.columns
+    assert "densidade_hab_km2" not in coverage.columns
+
+
+def test_densidade_e_calculada_a_partir_da_populacao_do_proprio_dataset():
+    # Alta Floresta D'Oeste: população 22.787 (ver _populacao()).
+    area = pd.DataFrame({
+        "codigo_municipio": ["1100015"],
+        "area_km2": [7067.025],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), area=area)
+
+    alta_floresta = coverage.set_index("codigo_municipio").loc["1100015"]
+    assert alta_floresta["area_km2"] == 7067.025
+    assert alta_floresta["densidade_hab_km2"] == round(22787 / 7067.025, 2)
+
+
+def test_municipio_sem_area_fica_com_nan_nao_com_zero():
+    # Mesma decisão de "não imputar" já usada para PIB.
+    area = pd.DataFrame({
+        "codigo_municipio": ["1100015"],
+        "area_km2": [7067.025],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), area=area)
+
+    ariquemes = coverage.set_index("codigo_municipio").loc["1100023"]
+    assert pd.isna(ariquemes["area_km2"])
+    assert pd.isna(ariquemes["densidade_hab_km2"])
+
+
 def test_doses_sem_municipio_correspondente_zero_quando_tudo_bate():
     municipios_sem_match, doses_perdidas = doses_sem_municipio_correspondente(
         _populacao(), _doses_minimas()

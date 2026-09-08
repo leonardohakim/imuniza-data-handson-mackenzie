@@ -88,6 +88,24 @@ usa como denominador a população residente (IBGE), então o numerador
 grandes hospitais/postos) ficariam com cobertura artificialmente inflada
 às custas dos municípios vizinhos.
 
+### `raw/ibge/area/area_municipios.csv`
+
+Resposta bruta da API SIDRA (`/values/t/4714/n6/all/v/6318/p/last`), tabela
+4714 (população residente, área territorial e densidade demográfica),
+variável 6318 (área territorial, km²), nível município. **Sem partição por
+ano** (diferente das outras fontes IBGE): área territorial é um atributo
+estático do município, não reprocessado por `--ano` — ver
+`docs/decisoes_limpeza.md`.
+
+| Coluna | Descrição |
+|---|---|
+| `V` | Valor da área territorial (km²) |
+| `D1C` / `D1N` | Código IBGE (7 dígitos) / nome do município |
+| `D3C` / `D3N` | Ano de referência da medição (Censo mais recente disponível na tabela — 2022 no momento em que foi confirmado contra a API real) |
+
+Mesma linha de metadados do SIDRA no início do array (ver seção de
+população acima); tratamento em `src/cleaning/clean_area.py`.
+
 ## Camada `trusted` (dado limpo e padronizado)
 
 ### `trusted/ibge/populacao/ano={ano}/populacao_municipios.parquet`
@@ -130,6 +148,18 @@ individual):
 | `doses_aplicadas` | int64 | Contagem de doses naquele município/mês/vacina |
 | `outlier_iqr` | bool | `True` se o total do município naquele mês está fora de `[Q1 - 3·IQR, Q3 + 3·IQR]` da distribuição de todos os municípios no mês: **sinalizado, não removido** (ver decisões de limpeza) |
 
+### `trusted/ibge/area/area_municipios.parquet`
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `codigo_municipio` | string (7 dígitos) | Código IBGE do município |
+| `municipio` | string | Nome do município (UF) |
+| `area_km2` | float64 | Área territorial em km² |
+| `ano_referencia_area` | string | Ano da medição de área (não é o mesmo `ano` do resto do dataset refinado — ver nota na camada `raw` acima) |
+
+Também é gravado `_cleaning_report.txt` na mesma pasta, mesmo formato dos
+outros relatórios de limpeza.
+
 ## Camada `refined` (pronto para análise/ML)
 
 ### `refined/cobertura_vacinal/ano={ano}/cobertura_municipios.parquet`
@@ -146,6 +176,8 @@ Uma linha por município, IBGE + PNI já cruzados:
 | `cobertura_doses_por_100_habitantes` | float | `doses_aplicadas / populacao * 100`; ver limitação de interpretação em `src/cleaning/build_coverage.py` (é um proxy de intensidade de vacinação, não de % de pessoas efetivamente imunizadas, por causa de esquemas multidose) |
 | `pib_mil_reais` | float (opcional) | PIB total do município em Mil Reais, ano de referência 2023 (`--ano-pib`, ver `docs/decisoes_limpeza.md` seção 3); `NaN` quando o município não tem PIB no trusted, e a coluna toda fica ausente se `clean_pib.py` ainda não rodou |
 | `pib_per_capita_reais` | float (opcional) | `pib_mil_reais * 1000 / populacao`, calculado em `build_coverage.py`; mesma condição de ausência da coluna acima |
+| `area_km2` | float (opcional) | Área territorial do município (IBGE/SIDRA, ver `docs/decisoes_limpeza.md`); `NaN`/coluna ausente se `clean_area.py` ainda não rodou |
+| `densidade_hab_km2` | float (opcional) | `populacao / area_km2`, calculado em `build_coverage.py` a partir da população do próprio dataset (não da densidade que a Tabela 4714 já traz, que usa população de outro ano — ver `src/cleaning/build_coverage.py`); mesma condição de ausência da coluna acima |
 
 ## Camada de modelagem (Etapa 3, derivada em notebook — não persistida no MinIO)
 

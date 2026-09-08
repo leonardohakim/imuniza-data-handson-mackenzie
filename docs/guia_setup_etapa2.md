@@ -47,6 +47,7 @@ Dados Abertos" é um endpoint externo instável, não bloqueia o resto.
 ```bash
 python -m src.ingestion.download_ibge --ano 2025
 python -m src.ingestion.download_pib --ano 2023
+python -m src.ingestion.download_area
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1
 ```
 
@@ -55,6 +56,10 @@ python -m src.ingestion.inspect_pni --ano 2025 --mes 1
   próximo passo — não é só um detalhe estético).
 - `download_pib`: PIB municipal fica sempre ~2 anos defasado na fonte; 2023
   é o ano mais recente disponível na série do IBGE.
+- `download_area`: área territorial municipal (Tabela 4714 do SIDRA), usada
+  para calcular densidade demográfica em `build_coverage.py`. Não recebe
+  `--ano` de propósito — área não é uma série temporal como população/PIB,
+  ver `docs/decisoes_limpeza.md`, seção 10.
 - `inspect_pni`: confirma os nomes reais das colunas do CSV do PNI antes de
   limpar (o schema já foi validado nesta sessão, mas é bom hábito rodar
   antes de confiar no pipeline).
@@ -67,6 +72,7 @@ python -m src.ingestion.inspect_pni --ano 2025 --mes 1
 ```bash
 python -m src.cleaning.clean_ibge --ano 2025
 python -m src.cleaning.clean_pib --ano 2023
+python -m src.cleaning.clean_area
 python -m src.cleaning.clean_pni --ano 2025
 python -m src.cleaning.build_coverage --ano 2025
 ```

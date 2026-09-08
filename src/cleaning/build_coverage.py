@@ -45,7 +45,10 @@ def load_parquet(s3, bucket: str, key: str) -> pd.DataFrame:
 
 
 def compute_coverage(
-    populacao: pd.DataFrame, doses: pd.DataFrame, pib: pd.DataFrame | None = None
+    populacao: pd.DataFrame,
+    doses: pd.DataFrame,
+    pib: pd.DataFrame | None = None,
+    area: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Junta população (IBGE, trusted) + doses (PNI, trusted) e calcula a
     métrica de cobertura. Função pura (sem I/O) para ser testável isoladamente
@@ -57,7 +60,15 @@ def compute_coverage(
     correlação socioeconômica. O cruzamento aqui é direto por
     `codigo_municipio` de 7 dígitos (sem a conversão de 6/7 dígitos que o PNI
     exige), porque o PIB já vem do IBGE, mesmo sistema de código da
-    população."""
+    população.
+
+    `area` é opcional também (trusted, ver `clean_area.py`): adiciona
+    `area_km2` e `densidade_hab_km2`. A densidade é **recalculada aqui**
+    (população deste dataset / área), não copiada da densidade que a própria
+    Tabela 4714 do SIDRA já traz — a densidade da tabela usa população do
+    Censo 2022, um ano diferente do resto do pipeline (2025); recalcular com
+    a população já coletada evita misturar dois anos de população na mesma
+    métrica derivada. Ver `docs/decisoes_limpeza.md`."""
     doses_por_municipio = (
         doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
     )
@@ -103,6 +114,18 @@ def compute_coverage(
         # análise de correlação. Ver `docs/decisoes_limpeza.md`.
         coverage["pib_per_capita_reais"] = (
             coverage["pib_mil_reais"] * 1000 / coverage["populacao"]
+        ).round(2)
+
+    if area is not None:
+        area_por_municipio = area[["codigo_municipio", "area_km2"]].drop_duplicates(
+            subset=["codigo_municipio"]
+        )
+        coverage = coverage.merge(area_por_municipio, on="codigo_municipio", how="left")
+
+        # Mesma decisão de "não imputar" já usada para PIB: município sem área
+        # no trusted fica com NaN, não com um valor inventado.
+        coverage["densidade_hab_km2"] = (
+            coverage["populacao"] / coverage["area_km2"]
         ).round(2)
 
     return coverage
@@ -165,7 +188,23 @@ def build_coverage(ano: int, ano_pib: int | None = None) -> pd.DataFrame:
             "Prosseguindo sem essa coluna."
         )
 
-    coverage = compute_coverage(populacao, doses, pib)
+    # Área territorial não é reprocessada por --ano (ver docstring de
+    # download_area.py/clean_area.py — é um atributo estático do município).
+    # Se ainda não tiver rodado `clean_area.py`, a coluna fica de fora do
+    # refinado em vez de quebrar o pipeline, mesmo padrão do PIB acima.
+    area = None
+    try:
+        area = load_parquet(s3, BUCKET_TRUSTED, "ibge/area/area_municipios.parquet")
+    except s3.exceptions.NoSuchKey:
+        print(
+            "[AVISO] Área territorial trusted não encontrada "
+            "(rode 'python -m src.ingestion.download_area' e "
+            "'python -m src.cleaning.clean_area' primeiro se quiser incluir "
+            "densidade demográfica no dataset refinado). Prosseguindo sem "
+            "essa coluna."
+        )
+
+    coverage = compute_coverage(populacao, doses, pib, area)
 
     # Municípios com população no IBGE mas nenhuma dose registrada no PNI
     # para o ano: mantemos a linha (cobertura = 0%) em vez de descartar —

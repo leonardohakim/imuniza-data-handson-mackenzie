@@ -71,11 +71,13 @@ imuniza-data-handson-mackenzie/
 │   ├── ingestion/                # Etapa 1: coleta (fontes -> bucket "raw")
 │   │   ├── download_ibge.py
 │   │   ├── download_pib.py
+│   │   ├── download_area.py    # área territorial (IBGE/SIDRA); não particionado por --ano, ver docs/decisoes_limpeza.md
 │   │   ├── download_pni.py     # opcional — ver nota no "Como Executar"
 │   │   └── inspect_pni.py
 │   └── cleaning/                  # Etapa 2: limpeza (bucket "raw" -> "trusted" -> "refined")
 │       ├── clean_ibge.py
 │       ├── clean_pib.py
+│       ├── clean_area.py
 │       ├── clean_pni.py
 │       └── build_coverage.py
 ├── tests/                        # Testes automatizados (pytest)
@@ -119,6 +121,7 @@ python -m src.validate_setup  # confere MinIO + fontes externas, cria os buckets
 ```bash
 python -m src.ingestion.download_ibge --ano 2025
 python -m src.ingestion.download_pib --ano 2023   # PIB municipal (variável socioeconômica); série vai até 2023
+python -m src.ingestion.download_area            # área territorial (IBGE/SIDRA); sem --ano de propósito, ver docs/decisoes_limpeza.md
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema real antes de limpar
 ```
 
@@ -131,8 +134,9 @@ sem gravar em `raw`.
 ```bash
 python -m src.cleaning.clean_ibge --ano 2025
 python -m src.cleaning.clean_pib --ano 2023
+python -m src.cleaning.clean_area                  # área territorial/densidade demográfica; sem --ano de propósito
 python -m src.cleaning.clean_pni --ano 2025
-python -m src.cleaning.build_coverage --ano 2025   # cruza PIB de 2023 automaticamente (--ano-pib, default 2023)
+python -m src.cleaning.build_coverage --ano 2025   # cruza PIB de 2023 e área/densidade automaticamente (--ano-pib, default 2023)
 jupyter notebook notebooks/02_analise_exploratoria.ipynb
 ```
 
