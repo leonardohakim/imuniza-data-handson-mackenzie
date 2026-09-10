@@ -88,6 +88,44 @@ transversal (cross-sectional).
 | Métrica de seleção é RMSE (não R²) | RMSE fica na mesma unidade do alvo (doses por 100 habitantes), o que facilita julgar se o erro típico é aceitável para priorização olhando a escala real da métrica; R² é reportado ao lado como referência de quanto da variância o modelo explica em relação à média, mas não é o critério de desempate entre modelos. |
 | Nenhuma expectativa de melhoria de R²/poder preditivo só por trocar classificação por regressão — registrado antes de rodar com dados reais | A limitação de fundo já documentada (seção "Limitações", abaixo) é a pobreza de features (só população, PIB per capita e um sinal geográfico aproximado), não o formato do alvo. Trocar o enquadramento não resolve a causa raiz do desempenho fraco já visto na classificação (F1 ≈ 0,39, ROC-AUC ≈ 0,58 no teste) — o valor esperado aqui é uma ferramenta de priorização mais granular, não uma correção de desempenho. Evita o risco de reportar o resultado da regressão como se fosse uma "melhoria" quando na verdade é só uma mudança de pergunta. |
 
+## 8. Resultados observados contra dados reais (checagem pós-CNES)
+
+A seção 7 registrou, antes de rodar contra dados reais, que não se esperava
+ganho de R²/poder preditivo só por integrar o CNES ou reformular o alvo como
+regressão — a causa raiz seria a pobreza de features, não o formato do alvo
+ou a ausência dessa fonte específica. Esta seção fecha esse ciclo: registra
+o que de fato aconteceu depois que `download_cnes`/`clean_cnes`/
+`build_coverage` rodaram contra dado real e o notebook foi reexecutado
+ponta a ponta com a feature `log_estabelecimentos_saude_sus_por_100k_hab`
+incorporada.
+
+**Classificação — comparação antes/depois do CNES (mesmo split, mesma
+metodologia de tuning):**
+
+| Métrica | Antes (sem CNES) | Depois (com CNES) |
+|---|---|---|
+| F1 validação (melhor modelo, Random Forest) | 0,452 | 0,418 |
+| F1 teste | 0,390 | 0,391 |
+| ROC-AUC teste | 0,582 | 0,591 |
+
+Variação desprezível nos dois sentidos — confirma a expectativa registrada
+na seção 7: o CNES não resolveu (nem piorou de forma relevante) o
+desempenho agregado de classificação.
+
+| Achado | Leitura / decisão |
+|---|---|
+| `log_estabelecimentos_saude_sus_por_100k_hab` (CNES) tem correlação de Pearson fraca com a cobertura (0,089, impressa na célula de construção do dataset — ver seção 1), mas aparece como a **2ª feature mais importante** no Random Forest da classificação (~0,23, atrás só de `log_pib_per_capita` e à frente de `log_populacao`) | Não é contraditório: correlação de Pearson mede só relação linear univariada; a importância de features de uma árvore captura interações não-lineares que a correlação simples não enxerga. Interpretação registrada: o CNES carrega sinal real e relevante em combinação com as outras features, mesmo sem mover o F1/ROC-AUC agregado — reforça a leitura já dada na seção 7 de que o valor do enriquecimento de features aparece mais como ferramenta de priorização/explicação do que como ganho de métrica agregada. Mantido no conjunto de features; nenhuma ação adicional necessária. |
+| Na regressão, o RMSE de validação do melhor modelo (Ridge, 54,66) ficou bem mais alto que o RMSE de teste do mesmo modelo (15,81) — a princípio parece inconsistente | Investigado e explicado, não é bug: o split treino/validação/teste (seção 3) é estratificado pelo alvo **binário** da classificação (`baixa_cobertura`), não pelo alvo contínuo da regressão. `cobertura_doses_por_100_habitantes` tem cauda pesada (municípios pequenos chegam a >150-190 doses/100 hab., efeito de volatilidade já registrado no notebook 02 e na seção de clusterização do notebook 03); por acaso da amostragem, a partição de validação concentrou mais desses outliers extremos que a de teste, inflando o RMSE ali sem que haja nada de errado no código (mesma métrica, mesma função, aplicada igual nos dois conjuntos — conferido também visualmente no gráfico previsto-vs-real do teste, `reports/regressao_previsto_vs_real.png`). Registrado aqui como limitação conhecida do enquadramento de regressão (ver também "Limitações" abaixo), não corrigido nesta entrega — corrigir exigiria estratificar (ou ao menos balancear) o split também pela distribuição do alvo contínuo, o que voltaria a acoplar os dois enquadramentos e contraria a decisão da seção 7 de mantê-los comparáveis via o mesmo split simples. |
+
+**Conclusão prática registrada**: o CNES entregou exatamente o que a seção 7
+previa — não é um "fix" de desempenho, mas comprova sinal real (2º lugar em
+importância) e serve como ferramenta de priorização mais granular. Dado o
+retorno decrescente de continuar só enriquecendo features estáticas, a
+prioridade natural do próximo ciclo de trabalho passa a ser a modelagem
+temporal com um segundo ano de dados (2024) — mais alinhada ao objetivo
+original do projeto (ver "Objetivo desta etapa" acima) do que mais uma
+feature transversal.
+
 ## Limitações conhecidas / próximos passos
 
 - **Escopo transversal, não temporal**: falta um segundo ano de dados
@@ -103,12 +141,22 @@ transversal (cross-sectional).
 - **Desbalanceamento tratado só por peso de classe**: técnicas de
   reamostragem (ex.: SMOTE) são uma melhoria possível, a testar com
   cautela para não gerar municípios sintéticos pouco realistas.
-- **Poucas features**: só três variáveis numéricas de fato (população,
-  PIB per capita, fronteira) além da região. A sazonalidade mensal
-  identificada no notebook 02 (seção 7) não entrou como feature porque o
-  dataset `refined` usado aqui é anual — incorporar o mês exigiria
+- **Poucas features, mesmo após o enriquecimento**: população, PIB per
+  capita, fronteira, região e agora CNES (seção 8) — cinco sinais no total,
+  o que ainda é pouco para um F1/ROC-AUC fortes. O CNES ajudou como sinal
+  de importância (seção 8), mas não resolveu a causa raiz. A sazonalidade
+  mensal identificada no notebook 02 (seção 7) não entrou como feature
+  porque o dataset `refined` usado aqui é anual — incorporar o mês exigiria
   remodelar o `refined` para preservar granularidade mensal por município
-  (ver `docs/decisoes_limpeza.md`, seção 2).
+  (ver `docs/decisoes_limpeza.md`, seção 2). Área/densidade (SIDRA) segue
+  como feature condicional (seção 1) até o bloqueio de rede daquela fonte
+  ser contornado.
+- **RMSE da regressão sensível a qual partição concentra os outliers de
+  cobertura**: como o split é estratificado só pelo alvo binário, não pelo
+  alvo contínuo (seção 8), o RMSE de validação e de teste pode divergir
+  bastante entre si mesmo para o mesmo modelo, dependendo de quantos
+  municípios de cobertura extrema caem em cada partição por acaso da
+  amostragem — observado na prática (seção 8). Não corrigido nesta entrega.
 - **Custo computacional**: Random Forest foi o modelo mais lento para
   ajustar na grade de hiperparâmetros usada; em um cenário com mais dados
   (ex.: granularidade mensal), o custo de re-treinar os quatro modelos
