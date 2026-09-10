@@ -49,6 +49,7 @@ def compute_coverage(
     doses: pd.DataFrame,
     pib: pd.DataFrame | None = None,
     area: pd.DataFrame | None = None,
+    cnes: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Junta população (IBGE, trusted) + doses (PNI, trusted) e calcula a
     métrica de cobertura. Função pura (sem I/O) para ser testável isoladamente
@@ -68,7 +69,14 @@ def compute_coverage(
     Tabela 4714 do SIDRA já traz — a densidade da tabela usa população do
     Censo 2022, um ano diferente do resto do pipeline (2025); recalcular com
     a população já coletada evita misturar dois anos de população na mesma
-    métrica derivada. Ver `docs/decisoes_limpeza.md`."""
+    métrica derivada. Ver `docs/decisoes_limpeza.md`.
+
+    `cnes` é opcional também (trusted, ver `clean_cnes.py`): adiciona
+    `qtd_estabelecimentos_saude` e `qtd_estabelecimentos_saude_sus`. Assim
+    como as doses (PNI), o CNES usa o código de município de 6 dígitos do
+    DATASUS, não os 7 dígitos do IBGE — por isso é cruzado pela mesma chave
+    truncada (`codigo_municipio_datasus`) usada para as doses, não pelo
+    `codigo_municipio` de 7 dígitos usado para PIB/área."""
     doses_por_municipio = (
         doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
     )
@@ -93,7 +101,7 @@ def compute_coverage(
         how="left",
         suffixes=("", "_pni"),
     )
-    coverage = coverage.drop(columns=["codigo_municipio_datasus", "codigo_municipio_pni"], errors="ignore")
+    coverage = coverage.drop(columns=["codigo_municipio_pni"], errors="ignore")
     coverage["doses_aplicadas"] = coverage["doses_aplicadas"].fillna(0).astype("int64")
 
     coverage["cobertura_doses_por_100_habitantes"] = (
@@ -127,6 +135,20 @@ def compute_coverage(
         coverage["densidade_hab_km2"] = (
             coverage["populacao"] / coverage["area_km2"]
         ).round(2)
+
+    if cnes is not None:
+        # Mesma chave truncada de 6 dígitos usada para o PNI (não o
+        # `codigo_municipio` de 7 dígitos do IBGE) — ver docstring acima.
+        coverage = coverage.merge(
+            cnes[["codigo_municipio", "qtd_estabelecimentos_saude", "qtd_estabelecimentos_saude_sus"]],
+            left_on="codigo_municipio_datasus",
+            right_on="codigo_municipio",
+            how="left",
+            suffixes=("", "_cnes"),
+        )
+        coverage = coverage.drop(columns=["codigo_municipio_cnes"], errors="ignore")
+
+    coverage = coverage.drop(columns=["codigo_municipio_datasus"], errors="ignore")
 
     return coverage
 
@@ -204,7 +226,22 @@ def build_coverage(ano: int, ano_pib: int | None = None) -> pd.DataFrame:
             "essa coluna."
         )
 
-    coverage = compute_coverage(populacao, doses, pib, area)
+    # CNES (estabelecimentos de saúde), assim como área, é um snapshot
+    # único sem partição por --ano (ver docstring de download_cnes.py/
+    # clean_cnes.py). Mesmo padrão de degradação graciosa do PIB/área.
+    cnes = None
+    try:
+        cnes = load_parquet(s3, BUCKET_TRUSTED, "cnes/cnes_estabelecimentos_por_municipio.parquet")
+    except s3.exceptions.NoSuchKey:
+        print(
+            "[AVISO] CNES trusted não encontrado (rode "
+            "'python -m src.ingestion.download_cnes' e "
+            "'python -m src.cleaning.clean_cnes' primeiro se quiser incluir "
+            "estabelecimentos de saúde no dataset refinado). Prosseguindo "
+            "sem essa coluna."
+        )
+
+    coverage = compute_coverage(populacao, doses, pib, area, cnes)
 
     # Municípios com população no IBGE mas nenhuma dose registrada no PNI
     # para o ano: mantemos a linha (cobertura = 0%) em vez de descartar —

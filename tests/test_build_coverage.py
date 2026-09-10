@@ -12,6 +12,9 @@ import pandas as pd
 
 from src.cleaning.build_coverage import compute_coverage, doses_sem_municipio_correspondente
 
+# Códigos DATASUS (6 dígitos) correspondentes aos municípios de _populacao():
+# "1100015" (Alta Floresta D'Oeste) -> "110001"; "3550308" (São Paulo) -> "355030".
+
 
 def _populacao():
     return pd.DataFrame({
@@ -170,6 +173,59 @@ def test_doses_sem_municipio_correspondente_zero_quando_tudo_bate():
 
     assert municipios_sem_match == 0
     assert doses_perdidas == 0
+
+
+# --- CNES (estabelecimentos de saúde, opcional) ---------------------------
+
+def test_sem_cnes_nao_adiciona_colunas_de_cnes():
+    coverage = compute_coverage(_populacao(), _doses_minimas(), cnes=None)
+
+    assert "qtd_estabelecimentos_saude" not in coverage.columns
+    assert "qtd_estabelecimentos_saude_sus" not in coverage.columns
+
+
+def test_cnes_e_cruzado_pelo_codigo_datasus_de_6_digitos_nao_pelo_ibge():
+    # Mesmo cruzamento truncado já usado para as doses (PNI) — CNES também
+    # usa o código de 6 dígitos do DATASUS, não os 7 do IBGE.
+    cnes = pd.DataFrame({
+        "codigo_municipio": ["110001", "355030"],
+        "qtd_estabelecimentos_saude": [12, 4500],
+        "qtd_estabelecimentos_saude_sus": [8, 900],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), cnes=cnes)
+
+    alta_floresta = coverage.set_index("codigo_municipio").loc["1100015"]
+    sao_paulo = coverage.set_index("codigo_municipio").loc["3550308"]
+    assert alta_floresta["qtd_estabelecimentos_saude"] == 12
+    assert alta_floresta["qtd_estabelecimentos_saude_sus"] == 8
+    assert sao_paulo["qtd_estabelecimentos_saude"] == 4500
+    assert "codigo_municipio_datasus" not in coverage.columns  # coluna auxiliar não vaza pro resultado
+
+
+def test_municipio_sem_cnes_fica_com_nan_nao_com_zero():
+    # Mesma decisão de "não imputar" já usada para PIB/área: ausência de
+    # dado no CNES não vira 0 estabelecimentos fabricado.
+    cnes = pd.DataFrame({
+        "codigo_municipio": ["110001"],
+        "qtd_estabelecimentos_saude": [12],
+        "qtd_estabelecimentos_saude_sus": [8],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), cnes=cnes)
+
+    ariquemes = coverage.set_index("codigo_municipio").loc["1100023"]
+    assert pd.isna(ariquemes["qtd_estabelecimentos_saude"])
+    assert pd.isna(ariquemes["qtd_estabelecimentos_saude_sus"])
+
+
+def test_codigo_municipio_datasus_nao_vaza_mesmo_sem_area_nem_cnes():
+    # codigo_municipio_datasus agora só é descartado no fim de
+    # compute_coverage (precisa sobreviver até o merge opcional do CNES) —
+    # checagem de que continua não vazando quando nem área nem CNES são
+    # passados.
+    coverage = compute_coverage(_populacao(), _doses_minimas())
+    assert "codigo_municipio_datasus" not in coverage.columns
 
 
 def test_municipio_sem_pib_fica_com_nan_nao_com_zero():

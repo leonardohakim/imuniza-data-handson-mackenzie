@@ -106,6 +106,26 @@ estático do município, não reprocessado por `--ano` — ver
 Mesma linha de metadados do SIDRA no início do array (ver seção de
 população acima); tratamento em `src/cleaning/clean_area.py`.
 
+### `raw/cnes/cnes_estabelecimentos.zip`
+
+Arquivo ZIP como veio direto do portal CKAN (`dadosabertos.saude.gov.br`),
+recurso "CNES Estabelecimentos" em formato CSV — snapshot nacional atual
+do Cadastro Nacional de Estabelecimentos de Saúde. **Sem partição por
+ano** (mesmo critério da área territorial): é o cadastro "atual", não uma
+série histórica reprocessada por `--ano` — ver `docs/decisoes_limpeza.md`.
+Contém 1 CSV interno (`cnes_estabelecimentos.csv`, separador `;`,
+encoding `latin1`, 36 colunas, confirmado contra a fonte real via
+`investigar_cnes_schema.py`); só as colunas abaixo são usadas pela
+limpeza:
+
+| Coluna | Descrição |
+|---|---|
+| `CO_CNES` | Código do estabelecimento (chave para contagem) |
+| `CO_IBGE` | Código do município — **apesar do nome, vem no padrão DATASUS de 6 dígitos**, não os 7 dígitos do IBGE (confirmado: 635.786 de 635.786 registros reais com exatamente 6 caracteres) |
+| `CO_AMBULATORIAL_SUS` | `"SIM"`/`"NAO"` — se o estabelecimento tem atendimento ambulatorial pelo SUS |
+
+Tratamento em `src/cleaning/clean_cnes.py`.
+
 ## Camada `trusted` (dado limpo e padronizado)
 
 ### `trusted/ibge/populacao/ano={ano}/populacao_municipios.parquet`
@@ -160,6 +180,20 @@ individual):
 Também é gravado `_cleaning_report.txt` na mesma pasta, mesmo formato dos
 outros relatórios de limpeza.
 
+### `trusted/cnes/cnes_estabelecimentos_por_municipio.parquet`
+
+Já agregado por município (o raw é 1 linha por estabelecimento; aqui é
+1 linha por município):
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `codigo_municipio` | string (**6 dígitos**, DATASUS/SUS) | Mesmo padrão do PNI, não os 7 dígitos do IBGE — ver nota na camada `raw` acima |
+| `qtd_estabelecimentos_saude` | int64 | Total de estabelecimentos de saúde cadastrados no município |
+| `qtd_estabelecimentos_saude_sus` | int64 | Subconjunto com atendimento ambulatorial SUS (`CO_AMBULATORIAL_SUS = "SIM"`) — proxy mais próximo de capacidade de vacinação do que o total bruto |
+
+Também é gravado `_cleaning_report.txt` na mesma pasta, mesmo formato dos
+outros relatórios de limpeza.
+
 ## Camada `refined` (pronto para análise/ML)
 
 ### `refined/cobertura_vacinal/ano={ano}/cobertura_municipios.parquet`
@@ -178,6 +212,8 @@ Uma linha por município, IBGE + PNI já cruzados:
 | `pib_per_capita_reais` | float (opcional) | `pib_mil_reais * 1000 / populacao`, calculado em `build_coverage.py`; mesma condição de ausência da coluna acima |
 | `area_km2` | float (opcional) | Área territorial do município (IBGE/SIDRA, ver `docs/decisoes_limpeza.md`); `NaN`/coluna ausente se `clean_area.py` ainda não rodou |
 | `densidade_hab_km2` | float (opcional) | `populacao / area_km2`, calculado em `build_coverage.py` a partir da população do próprio dataset (não da densidade que a Tabela 4714 já traz, que usa população de outro ano — ver `src/cleaning/build_coverage.py`); mesma condição de ausência da coluna acima |
+| `qtd_estabelecimentos_saude` | float (opcional) | Total de estabelecimentos de saúde cadastrados no CNES (ver `docs/decisoes_limpeza.md`); cruzado pelo código de 6 dígitos DATASUS (mesma chave das doses), não pelo `codigo_municipio` de 7 dígitos; `NaN`/coluna ausente se `clean_cnes.py` ainda não rodou |
+| `qtd_estabelecimentos_saude_sus` | float (opcional) | Subconjunto de `qtd_estabelecimentos_saude` com atendimento ambulatorial SUS; mesma condição de ausência da coluna acima |
 
 ## Camada de modelagem (Etapa 3, derivada em notebook — não persistida no MinIO)
 

@@ -48,6 +48,7 @@ Dados Abertos" é um endpoint externo instável, não bloqueia o resto.
 python -m src.ingestion.download_ibge --ano 2025
 python -m src.ingestion.download_pib --ano 2023
 python -m src.ingestion.download_area
+python -m src.ingestion.download_cnes
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1
 ```
 
@@ -60,6 +61,10 @@ python -m src.ingestion.inspect_pni --ano 2025 --mes 1
   para calcular densidade demográfica em `build_coverage.py`. Não recebe
   `--ano` de propósito — área não é uma série temporal como população/PIB,
   ver `docs/decisoes_limpeza.md`, seção 10.
+- `download_cnes`: estabelecimentos de saúde (CNES), mesmo portal do PNI.
+  Também sem `--ano` (é um cadastro atual, não série histórica) — ver
+  `docs/decisoes_limpeza.md`, seção 11. Baixa só o recurso em CSV (~54MB);
+  os outros dois formatos disponíveis (JSON/XML) não são usados.
 - `inspect_pni`: confirma os nomes reais das colunas do CSV do PNI antes de
   limpar (o schema já foi validado nesta sessão, mas é bom hábito rodar
   antes de confiar no pipeline).
@@ -73,6 +78,7 @@ python -m src.ingestion.inspect_pni --ano 2025 --mes 1
 python -m src.cleaning.clean_ibge --ano 2025
 python -m src.cleaning.clean_pib --ano 2023
 python -m src.cleaning.clean_area
+python -m src.cleaning.clean_cnes
 python -m src.cleaning.clean_pni --ano 2025
 python -m src.cleaning.build_coverage --ano 2025
 ```
