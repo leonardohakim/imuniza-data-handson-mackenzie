@@ -132,7 +132,13 @@ Repositório real:
 outputs de uma execução real contra o
 `refined/cobertura_vacinal/ano=2025/cobertura_municipios.parquet` gerado
 pelo pipeline (5.571 municípios, 1 descartado por falta de alguma das
-colunas usadas como feature). Números reais dessa execução:
+colunas usadas como feature — incluindo, desde a integração do CNES, a
+coluna `qtd_estabelecimentos_saude_sus`). Números reais dessa execução
+(já com CNES incorporado como feature; área/densidade — IBGE/SIDRA —
+ainda ausente nesta execução por bloqueio de rede da fonte, ver
+`docs/decisoes_limpeza.md`; o notebook detecta essa ausência e segue sem
+a feature, condicional já documentada em `docs/decisoes_modelagem.md`,
+seção 1):
 
 - **Alvo (`baixa_cobertura`)**: 1º quartil nacional de
   `cobertura_doses_por_100_habitantes` = **73,24 doses/100 hab.**
@@ -140,16 +146,18 @@ colunas usadas como feature). Números reais dessa execução:
   (70/15/15, estratificado — proporção de positivos = 0,250 nos três
   conjuntos).
 - **Comparação dos 4 modelos (F1 na validação, `GridSearchCV` 5-fold)**:
-  Random Forest 0,452 (melhor), Regressão Logística 0,450 (margem muito
-  pequena para o Random Forest — vale considerar se a perda de
-  interpretabilidade compensa), XGBoost 0,434, KNN 0,236 (maior acurácia,
-  0,705, mas menor recall, 0,182 — sintoma clássico de desbalanceamento
-  de classes mal tratado por esse modelo em particular).
-- **Modelo escolhido (Random Forest) no conjunto de teste**: F1 = 0,390,
-  ROC-AUC = 0,582.
+  Random Forest 0,418 (melhor; accuracy 0,583, precision 0,321, recall
+  0,598, ROC-AUC 0,627), Regressão Logística 0,412 (accuracy 0,539,
+  recall 0,646, ROC-AUC 0,592 — margem pequena para o Random Forest, vale
+  considerar se a perda de interpretabilidade compensa), XGBoost 0,405
+  (ROC-AUC 0,619), KNN 0,188 (maior acurácia, 0,690, mas menor recall,
+  0,144 — sintoma clássico de desbalanceamento de classes mal tratado por
+  esse modelo em particular).
+- **Modelo escolhido (Random Forest) no conjunto de teste**: F1 = 0,391,
+  ROC-AUC = 0,591.
 - **Checagem de overfitting** (gap treino−validação): Regressão Logística
-  -0,035 (pequeno), KNN +0,209 (grande — sinal de overfitting), Random
-  Forest -0,008 (pequeno), XGBoost +0,083 (moderado).
+  0,004 (pequeno), KNN 0,217 (grande — sinal de overfitting), Random
+  Forest 0,032 (pequeno), XGBoost 0,082 (moderado).
 - **Clusterização (K-Means, k=3 escolhido por silhouette score)**: o
   cluster de maior cobertura média (95,61 doses/100 hab.) também é o de
   menor população mediana (5.709 habitantes) entre os três — o notebook
@@ -163,6 +171,28 @@ Todas as decisões por trás desses números (definição do alvo, escolha dos
 4 algoritmos, tratamento de desbalanceamento, métricas) estão
 documentadas e justificadas em
 [`docs/decisoes_modelagem.md`](decisoes_modelagem.md).
+
+### 5.1. CNES como feature nova: comparação antes/depois e regressão complementar
+
+Comparando com a execução anterior (sem CNES, números substituídos acima):
+F1 de validação caiu de 0,452 para 0,418, F1 de teste ficou praticamente
+igual (0,390 → 0,391) e ROC-AUC de teste subiu levemente (0,582 → 0,591)
+— variação desprezível no desempenho agregado, como já esperado (ver
+`docs/decisoes_modelagem.md`, seção 7). O achado relevante veio da
+importância de features do Random Forest: `log_estabelecimentos_saude_sus_por_100k_hab`
+(CNES) ficou em **2º lugar** (~0,23, atrás só de `log_pib_per_capita` e à
+frente de `log_populacao`), apesar de correlação de Pearson fraca com o
+alvo (0,089, impressa na própria célula de construção do dataset) —
+análise completa e interpretação em `docs/decisoes_modelagem.md`, seção
+8.
+
+A mesma execução também roda a seção de regressão complementar (alvo
+contínuo `cobertura_doses_por_100_habitantes`, mesmo split): Ridge
+(linear) venceu na validação por RMSE (54,66 doses/100 hab., R² = 0,015)
+e no teste chegou a RMSE = 15,81, MAE = 11,90, R² = 0,062. A diferença de
+RMSE entre validação e teste é grande porque o split é estratificado só
+pelo alvo binário, não pelo contínuo — explicação completa (não é bug)
+também em `docs/decisoes_modelagem.md`, seção 8.
 
 **Bug real encontrado e corrigido ao rodar contra o Codespace**: a
 primeira versão do notebook configurava tanto o `GridSearchCV`
