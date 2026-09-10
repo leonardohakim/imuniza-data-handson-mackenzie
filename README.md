@@ -29,8 +29,8 @@ solução técnica) em
 ## Fontes de Dados
 
 - **DATASUS / TabNet (SI-PNI)**: Sistema de Informações do Programa Nacional de Imunizações
-- **OpenDataSUS**: bases granulares de doses aplicadas por município, período e faixa etária
-- **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
+- **OpenDataSUS**: bases granulares de doses aplicadas por município, período e faixa etária (PNI), e cadastro de estabelecimentos de saúde (CNES)
+- **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita, área territorial/densidade demográfica); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
 
 Por que cada fonte foi escolhida (e o que foi avaliado e descartado), o
 recorte geográfico (nacional) e temporal (ano completo de 2025), a
@@ -98,6 +98,8 @@ Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valo
 
 ### Etapa 3: Aplicação de ML e Treinamento de Modelos
 - **Classificação** de risco de baixa cobertura (alvo: abaixo do 1º quartil nacional) com quatro modelos comparados — Regressão Logística, KNN, Random Forest e XGBoost — com ajuste de hiperparâmetros (`GridSearchCV`) e tratamento explícito do desbalanceamento de classes
+- Features: população, PIB per capita, fronteira, região e estabelecimentos de saúde (CNES); área/densidade demográfica (IBGE/SIDRA) entra automaticamente quando disponível — ver `docs/decisoes_modelagem.md`, seção 1
+- **Enquadramento complementar de regressão** (alvo contínuo, mesma divisão treino/validação/teste) para rankear municípios por urgência dentro do grupo de risco — ver `docs/decisoes_modelagem.md`, seção 7
 - **Clusterização** (K-Means, k escolhido por silhouette score) para segmentar municípios por perfil de cobertura e características socioeconômicas
 - Matriz de comparação de modelos, matriz de confusão, curva ROC, importância de features e checagem de overfitting (treino vs. validação)
 - Escopo **transversal** (um único ano, 2025), não temporal — ver `docs/decisoes_modelagem.md` sobre por que "prever risco futuro" exigiria um segundo ano de dados que ainda não temos

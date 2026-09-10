@@ -31,6 +31,13 @@ abrangência nacional.
   anos; não existe "PIB de 2025" publicado). Essa defasagem é uma
   limitação conhecida e documentada — ver `docs/decisoes_limpeza.md`,
   seção 3.
+- **Área territorial (IBGE) e CNES**: sem recorte por `--ano` de propósito
+  — nenhuma das duas fontes é uma série histórica nesta pipeline. Área
+  territorial muda muito pouco ano a ano (o IBGE/SIDRA expõe uma medição
+  vigente, não uma série anual comparável às demais); o CNES é consultado
+  como cadastro **atual** de estabelecimentos (snapshot), não uma série
+  histórica. Justificativa completa em `docs/decisoes_limpeza.md`, seções
+  10 e 11.
 
 ## Fontes avaliadas e escolhidas
 
@@ -78,24 +85,75 @@ abrangência nacional.
     manualmente em vez de usar uma variável pronta) em
     `docs/decisoes_limpeza.md`, seção 3.
 
+### Área territorial e densidade demográfica (feature adicional)
+
+- **Escolhida**: IBGE/SIDRA, Tabela 4714 (área territorial), mesma API do
+  restante do IBGE usado no projeto (`apisidra.ibge.gov.br`).
+- **Por que**: densidade demográfica (calculada a partir da área e da
+  própria população do dataset) é um sinal geográfico adicional que pode
+  ajudar a explicar parte da variação de cobertura não capturada por
+  população/PIB isoladamente — mesma lógica de enriquecimento de features
+  já aplicada ao CNES, abaixo.
+- **Alternativa considerada e descartada**: usar a densidade que a própria
+  Tabela 4714 já traz pronta, em vez de recalcular — descartada porque
+  aquela densidade usa a população de um ano de referência diferente do
+  usado no resto do projeto (2025); recalcular a partir da população já
+  presente no dataset mantém as duas variáveis (população e densidade)
+  consistentes entre si. Justificativa completa em
+  `docs/decisoes_limpeza.md`, seção 10.
+- **Status conhecido**: esta fonte enfrentou bloqueio de rede (WAF/F5 do
+  lado do provedor) no ambiente de desenvolvimento usado nesta sessão,
+  intermitente e depois persistente. O código de ingestão
+  (`download_area.py`/`clean_area.py`) está pronto, testado e funciona
+  quando a fonte responde; o `build_coverage.py` e o notebook de modelagem
+  seguem sem essa feature (condicional, documentado em
+  `docs/decisoes_modelagem.md`, seção 1) enquanto o bloqueio persistir —
+  não é uma limitação do código do projeto, é uma indisponibilidade
+  externa da fonte a partir da rede usada para desenvolver.
+
+### Estabelecimentos de saúde — CNES (feature adicional)
+
+- **Escolhida**: CNES (Cadastro Nacional de Estabelecimentos de Saúde),
+  via portal OpenDataSUS (mesma API CKAN já usada para o PNI), dataset
+  `cnes-cadastro-nacional-de-estabelecimentos-de-saude`.
+- **Por que**: acesso a infraestrutura de saúde é uma hipótese direta de
+  fator associado à cobertura vacinal (mais pontos de atendimento
+  ambulatorial SUS, mais fácil vacinar) — não coberta por nenhuma das
+  três fontes originais (PNI, população, PIB). Reaproveita a mesma
+  infraestrutura de coleta já validada para o PNI (`list_resources`,
+  `download_to_temp`, cliente MinIO), sem duplicar lógica.
+- **Por que não entrou desde a Etapa 1/2 original**: só foi identificada
+  como fonte relevante depois da modelagem inicial, ao revisar as
+  limitações registradas em `docs/decisoes_modelagem.md` (poucas
+  features) — adicionada nesta sessão como parte do esforço de melhorar o
+  trabalho além do mínimo, não porque a fonte não existisse antes.
+- Schema real inspecionado contra a fonte (`investigar_cnes_schema.py`)
+  antes de escrever qualquer código de ingestão — mesmo princípio já
+  aplicado ao PNI/PIB/área. Justificativa completa (formato do arquivo,
+  filtro de atendimento ambulatorial SUS, código de município de 6
+  dígitos) em `docs/decisoes_limpeza.md`, seção 11.
+
 ## Verificabilidade das fontes
 
-Todas as três fontes são **APIs públicas de órgãos oficiais do governo
-federal** (Ministério da Saúde / DATASUS e IBGE), sem custo e sem
+Todas as cinco fontes são **APIs/portais públicos de órgãos oficiais do
+governo federal** (Ministério da Saúde / DATASUS e IBGE), sem custo e sem
 autenticação, com URLs exatas fixadas no código de ingestão
-(`src/ingestion/download_ibge.py`, `download_pib.py`, `download_pni.py`) —
-qualquer pessoa pode acessar as mesmas URLs e obter os mesmos dados brutos
-que o projeto usa, o que torna a coleta auditável e reprodutível por
-terceiros.
+(`src/ingestion/download_ibge.py`, `download_pib.py`, `download_pni.py`,
+`download_area.py`, `download_cnes.py`) — qualquer pessoa pode acessar as
+mesmas URLs e obter os mesmos dados brutos que o projeto usa, o que torna
+a coleta auditável e reprodutível por terceiros.
 
 ## Aspectos legais, éticos e vieses potenciais
 
 ### LGPD e privacidade
 
-As três fontes usadas são **dados públicos agregados de órgãos oficiais**
+As cinco fontes usadas são **dados públicos de órgãos oficiais**
 (DATASUS/OpenDataSUS e IBGE), disponibilizados sob política de dados
 abertos exatamente para uso público e reprodutível — não é feita nenhuma
-coleta de dado de fonte privada ou restrita. Ainda assim, o PNI nasce como
+coleta de dado de fonte privada ou restrita. Área territorial (medição
+geográfica) e CNES (cadastro de **estabelecimentos**, não de pessoas) não
+levantam questão de dado pessoal — a unidade de registro em ambos já é o
+estabelecimento/município, não o indivíduo. Ainda assim, o PNI nasce como
 registro individual (uma linha por dose aplicada, potencialmente
 identificável por paciente na fonte original), o que traz uma
 responsabilidade de tratamento mesmo sendo dado público:
@@ -159,6 +217,22 @@ documentada:
   modelos de classificação, então qualquer viés desse proxy também limita
   a interpretação dos coeficientes/importâncias de feature — ver
   `docs/decisoes_modelagem.md`, seção "Interpretação final".
+- **Viés de proxy de acesso à saúde único (CNES)**: `qtd_estabelecimentos_saude_sus`
+  conta estabelecimentos com atendimento ambulatorial SUS, mas não
+  distingue capacidade real (tamanho, equipe, se de fato aplica vacina)
+  nem distância efetiva até o paciente — um município pode ter vários
+  estabelecimentos pequenos e ainda assim baixa capacidade de vacinação,
+  ou poucos estabelecimentos mas de grande porte. É um proxy de
+  infraestrutura, não uma medida direta de capacidade vacinal. Achado real
+  registrado em `docs/decisoes_modelagem.md`, seção 8: a feature carrega
+  sinal relevante no modelo (2ª maior importância no Random Forest) apesar
+  dessa limitação.
+- **Viés de imprecisão geográfica (densidade)**: `densidade_hab_km2` é
+  uma média municipal — não captura concentração populacional desigual
+  dentro do próprio município (uma cidade grande com zona rural extensa e
+  pouco povoada tem densidade média baixa mesmo com bolsões densamente
+  povoados). Feature ainda não materializada nesta execução (ver "Status
+  conhecido" acima).
 
 ## Critérios de inclusão/exclusão de registros
 
@@ -177,3 +251,9 @@ justificativa individual em `docs/decisoes_limpeza.md`. Resumo:
   investigação na análise exploratória, e não removido — um valor extremo
   pode ser sinal real (ex.: polo regional de vacinação), não erro de
   dado.
+- Linha de área territorial é descartada se o valor vier vazio ou não
+  numérico (sigilo estatístico do IBGE); linha de CNES é descartada se o
+  código de município não vier no padrão de 6 dígitos esperado. Em ambos
+  os casos, município sem essa informação fica com a coluna em `NaN` no
+  refinado, não com um valor imputado — ver `docs/decisoes_limpeza.md`,
+  seções 10 e 11.
