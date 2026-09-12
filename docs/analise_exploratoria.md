@@ -138,14 +138,34 @@ do quintil Q4 (não do Q1, como a hipótese de "município pequeno é mais
 volátil" sozinha sugeriria).
 
 **Leitura numérica (seção 5.1 do notebook, cálculo de desvio padrão por
-quintil):** o notebook compara explicitamente o desvio padrão da cobertura
-no quintil de menor população (Q1) contra o de maior população (Q5) e
-gera uma conclusão textual dinâmica a partir do resultado real — ver
-`notebooks/02_analise_exploratoria.ipynb`, célula da seção 5.1, para o
-valor exato após a re-execução. Preliminarmente, o padrão visual indica
-que o porte populacional isolado não é um preditor forte de volatilidade
-de cobertura — o efeito de fronteira (seção 4) parece pesar mais do que o
-efeito de tamanho populacional.
+quintil):** os valores reais, após a re-execução do notebook, são:
+
+| Quintil | Média | Mediana | Desvio padrão |
+|---|---|---|---|
+| Q1 (menores) | 87,28 | 85,79 | 17,84 |
+| Q2 | 85,33 | 83,95 | 16,94 |
+| Q3 | 83,92 | 81,50 | 18,05 |
+| Q4 | 83,70 | 80,81 | **48,47** |
+| Q5 (maiores) | 81,05 | 80,18 | 14,08 |
+
+Comparando os dois extremos — como faz o notebook, que gera essa
+conclusão dinamicamente a partir do resultado real —, o desvio padrão de
+Q1 (17,84) é de fato maior do que o de Q5 (14,08): a hipótese de que
+municípios menores têm cobertura mais volátil **se confirma**, ainda que
+com uma diferença modesta, o que explica por que os boxplots parecem tão
+parecidos visualmente entre si.
+
+O valor de Q4 (48,47) chama atenção por ser quase o triplo dos demais
+quintis, mas não é um segundo polo de volatilidade por porte populacional:
+é o próprio outlier de Pacaraima-RR (1.606,41 doses por 100 habitantes,
+seção 3) caindo dentro da faixa de população do Q4. Um único valor tão
+extremo já é suficiente para inflar o desvio padrão de um grupo de ~1.100
+municípios — o número não indica que municípios de porte "médio-alto"
+sejam sistematicamente mais voláteis que os vizinhos.
+
+Juntando os dois pontos: o efeito de porte populacional existe (Q1 mais
+volátil que Q5), mas é discreto frente ao efeito de fronteira (seção 4),
+que segue sendo o padrão geográfico mais marcante identificado nesta EDA.
 
 ## 6. Cobertura vacinal vs. PIB per capita
 
@@ -154,9 +174,17 @@ efeito de tamanho populacional.
 Esta é a pergunta mais frequentemente feita sobre o problema — "cobertura
 vacinal está associada a renda/nível socioeconômico do município?" — e
 foi tratada com atenção especial por ter sido apontada explicitamente
-pelo professor como merecendo uma resposta mais explícita. Abaixo estão as
-respostas diretas, geradas no notebook (seção 6.1) a partir dos números
-reais calculados nas células anteriores:
+pelo professor como merecendo uma resposta mais explícita.
+
+**O que o gráfico mostra:** um scatter plot com o PIB per capita em escala
+logarítmica no eixo X (necessário porque os valores variam de poucos
+milhares a mais de R$ 600 mil — ver os outliers abaixo) contra a cobertura
+vacinal no eixo Y. A nuvem de pontos é visualmente dispersa em toda a
+faixa de PIB, sem um padrão de inclinação, afunilamento ou agrupamento
+claro — o que já antecipa visualmente a conclusão quantitativa abaixo: não
+há uma relação forte entre as duas variáveis. Abaixo estão as respostas
+diretas às perguntas do professor, geradas no notebook (seção 6.1) a
+partir dos números reais calculados nas células anteriores:
 
 **A correlação é forte ou fraca?** Fraca nos dois critérios usados:
 Pearson r = **0,0539** (p = 5,75e-05) e Spearman rho = **0,1035**
