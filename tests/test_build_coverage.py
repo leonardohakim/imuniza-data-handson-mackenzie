@@ -241,3 +241,26 @@ def test_municipio_sem_pib_fica_com_nan_nao_com_zero():
     ariquemes = coverage.set_index("codigo_municipio").loc["1100023"]
     assert pd.isna(ariquemes["pib_mil_reais"])
     assert pd.isna(ariquemes["pib_per_capita_reais"])
+
+
+def test_sem_fronteira_nao_adiciona_coluna_de_fronteira():
+    coverage = compute_coverage(_populacao(), _doses_minimas(), fronteira=None)
+    assert "fronteira" not in coverage.columns
+
+
+def test_municipio_sem_correspondencia_na_fronteira_fica_com_zero_nao_com_nan():
+    # Diferente de PIB/área/CNES: a fonte de fronteira é uma lista positiva
+    # completa (todo município na faixa aparece nela), então ausência de
+    # match já É a resposta "não é de fronteira" — não é lacuna de dado.
+    fronteira = pd.DataFrame({
+        "codigo_municipio": ["1100015"],
+        "fronteira": [1],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), fronteira=fronteira)
+
+    alta_floresta = coverage.set_index("codigo_municipio").loc["1100015"]
+    ariquemes = coverage.set_index("codigo_municipio").loc["1100023"]
+    assert alta_floresta["fronteira"] == 1
+    assert ariquemes["fronteira"] == 0
+    assert not pd.isna(ariquemes["fronteira"])

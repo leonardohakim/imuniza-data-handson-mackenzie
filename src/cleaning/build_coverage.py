@@ -50,6 +50,7 @@ def compute_coverage(
     pib: pd.DataFrame | None = None,
     area: pd.DataFrame | None = None,
     cnes: pd.DataFrame | None = None,
+    fronteira: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Junta população (IBGE, trusted) + doses (PNI, trusted) e calcula a
     métrica de cobertura. Função pura (sem I/O) para ser testável isoladamente
@@ -76,7 +77,17 @@ def compute_coverage(
     como as doses (PNI), o CNES usa o código de município de 6 dígitos do
     DATASUS, não os 7 dígitos do IBGE — por isso é cruzado pela mesma chave
     truncada (`codigo_municipio_datasus`) usada para as doses, não pelo
-    `codigo_municipio` de 7 dígitos usado para PIB/área."""
+    `codigo_municipio` de 7 dígitos usado para PIB/área.
+
+    `fronteira` é opcional também (trusted, ver `clean_fronteira.py`):
+    adiciona a coluna `fronteira` (1 = sede do município dentro da faixa
+    oficial de fronteira, Lei 6.634/1979; 0 = fora). Cruzado pelo
+    `codigo_municipio` de 7 dígitos (mesmo sistema do IBGE usado por
+    PIB/área). Diferente de PIB/área/CNES, município **sem** correspondência
+    na tabela trusted de fronteira vira `fronteira = 0`, não `NaN`: a fonte
+    é uma lista positiva completa (todo município na faixa aparece nela),
+    então ausência já é, ela mesma, a resposta "não é de fronteira" — não é
+    lacuna de dado. Ver `docs/decisoes_limpeza.md`, seção 12."""
     doses_por_municipio = (
         doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
     )
@@ -147,6 +158,16 @@ def compute_coverage(
             suffixes=("", "_cnes"),
         )
         coverage = coverage.drop(columns=["codigo_municipio_cnes"], errors="ignore")
+
+    if fronteira is not None:
+        fronteira_por_municipio = fronteira[["codigo_municipio", "fronteira"]].drop_duplicates(
+            subset=["codigo_municipio"]
+        )
+        coverage = coverage.merge(fronteira_por_municipio, on="codigo_municipio", how="left")
+
+        # Único caso do arquivo onde ausência de match vira 0, não NaN — ver
+        # docstring acima e docs/decisoes_limpeza.md, seção 12.
+        coverage["fronteira"] = coverage["fronteira"].fillna(0).astype("int64")
 
     coverage = coverage.drop(columns=["codigo_municipio_datasus"], errors="ignore")
 
@@ -241,7 +262,25 @@ def build_coverage(ano: int, ano_pib: int | None = None) -> pd.DataFrame:
             "sem essa coluna."
         )
 
-    coverage = compute_coverage(populacao, doses, pib, area, cnes)
+    # Faixa de fronteira oficial, assim como área e CNES, é um snapshot sem
+    # partição por --ano (ver docstring de download_fronteira.py/
+    # clean_fronteira.py). Mesmo padrão de degradação graciosa: sem essa
+    # trusted, `fronteira` simplesmente não aparece no refinado (quem
+    # consome o dataset — ex. notebook 03 — cai de volta na aproximação por
+    # UF, ver docs/decisoes_modelagem.md).
+    fronteira = None
+    try:
+        fronteira = load_parquet(s3, BUCKET_TRUSTED, "ibge/fronteira/municipios_faixa_fronteira.parquet")
+    except s3.exceptions.NoSuchKey:
+        print(
+            "[AVISO] Faixa de fronteira oficial trusted não encontrada "
+            "(rode 'python -m src.ingestion.download_fronteira' e "
+            "'python -m src.cleaning.clean_fronteira' primeiro se quiser "
+            "incluir a lista oficial em vez da aproximação por UF). "
+            "Prosseguindo sem essa coluna."
+        )
+
+    coverage = compute_coverage(populacao, doses, pib, area, cnes, fronteira)
 
     # Municípios com população no IBGE mas nenhuma dose registrada no PNI
     # para o ano: mantemos a linha (cobertura = 0%) em vez de descartar —

@@ -29,7 +29,7 @@ transversal (cross-sectional).
 | Decisão | Justificativa |
 |---|---|
 | Features originais: `log_populacao`, `log_pib_per_capita`, `fronteira` (binária) e `regiao` (categórica, 5 valores) | Diretamente ligadas às hipóteses registradas ao final do notebook 02: população e PIB per capita já haviam sido exploradas por correlação com a cobertura (seções 5 e 6 do notebook 02); fronteira e região vêm do padrão geográfico de outliers encontrado na seção 3 (efeito "caravana da vacina" concentrado em municípios de fronteira, sobretudo Norte). |
-| `fronteira` aproximada por UF (11 estados da faixa de fronteira, Lei 6.634/1979: AC, AP, AM, MT, MS, PA, PR, RS, RO, RR, SC), não pela lista oficial de municípios | Não existe, nesta pipeline, uma fonte de dado com a lista oficial de municípios que compõem a faixa de fronteira (~588 municípios). Aproximar por UF é impreciso (um estado inteiro "contamina" com o mesmo valor municípios que na prática estão longe da fronteira), mas dá ao modelo um sinal geográfico que, sem essa fonte adicional, seria custoso demais construir agora. Ver "Limitações". |
+| `fronteira` usa a lista oficial de municípios da faixa de fronteira (IBGE 2024, Lei 6.634/1979 — sede do município dentro da faixa; 588 municípios), com fallback automático para a aproximação por UF (11 estados) quando essa fonte ainda não está disponível no dataset refinado | Ver `docs/decisoes_limpeza.md`, seção 12, para a justificativa completa da fonte, do critério (`FAIXA_SEDE`) e da decisão de tratar ausência como `fronteira = 0` (não `NaN`). A aproximação por UF era grosseira por construção (um estado inteiro "contamina" com o mesmo valor municípios que na prática estão longe da fronteira); mantida só como fallback de robustez, não como abordagem principal. |
 | `regiao` (5 categorias: Norte/Nordeste/Centro-Oeste/Sudeste/Sul) em vez da UF completa (27 categorias) como feature categórica | UF completa explodiria o número de colunas do one-hot encoding (usado por todos os modelos, mas sobretudo sensível para a Regressão Logística) e fragmentaria demais o sinal para os ~5.570 municípios disponíveis. Região preserva o padrão geográfico relevante (a diferença Norte vs. resto do país, por exemplo) com uma cardinalidade bem menor. |
 | `populacao` e `pib_per_capita_reais` transformadas em log (`log1p`) antes de entrar no modelo | As duas distribuições são fortemente assimétricas (seções 2 e 6 do notebook 02); log1p aproxima uma escala mais tratável, o que ajuda sobretudo modelos sensíveis à escala/distância das features (Regressão Logística). Árvores (Random Forest, XGBoost) não precisariam disso, mas usar o mesmo conjunto de features para os três modelos simplifica a comparação. |
 | Descartar (não imputar) municípios sem PIB per capita, população ou cobertura | Mesmo critério já usado na Etapa 2 para população (`docs/decisoes_limpeza.md`, seção 1): essas três colunas são a base de tudo que vem depois; inventar um valor para o único município sem PIB (já identificado no notebook 02, seção 6) distorceria o dataset de modelagem sem necessidade — a perda é de 1 município em ~5.570. |
@@ -173,10 +173,12 @@ versão mais honesta e mais útil do resultado.
   Rodar `download_pni`/`clean_pni` etc. para outro ano (ex.: 2024) é o
   caminho natural, mas fica fora do escopo desta entrega pelo tempo que
   levaria reprocessar Etapa 1/2 inteira para um segundo ano.
-- **Fronteira aproximada por UF**: a lista oficial de municípios da faixa
-  de fronteira (Lei 6.634/1979) daria um sinal geográfico bem mais preciso
-  que o estado inteiro; não incorporada por falta de uma fonte de dado
-  pronta para essa lista nesta pipeline.
+- ~~**Fronteira aproximada por UF**~~ (**resolvido**): a lista oficial de
+  municípios da faixa de fronteira (IBGE 2024, Lei 6.634/1979) já está
+  integrada ao pipeline (`download_fronteira.py`/`clean_fronteira.py`,
+  ver `docs/decisoes_limpeza.md`, seção 12) e usada automaticamente assim
+  que a camada trusted correspondente existir; a aproximação por UF vira
+  fallback, não mais a única opção.
 - **Desbalanceamento tratado só por peso de classe**: técnicas de
   reamostragem (ex.: SMOTE) são uma melhoria possível, a testar com
   cautela para não gerar municípios sintéticos pouco realistas.
