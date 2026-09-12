@@ -11,20 +11,10 @@ documentadas com a justificativa completa em
 [`docs/decisoes_modelagem.md`](decisoes_modelagem.md); aqui o foco é
 interpretar o que os números e gráficos realmente mostram.
 
-> **Nota de honestidade:** os números abaixo refletem a execução mais
-> recente do notebook, que ainda inclui o KNN na comparação de
-> classificação. A equipe decidiu remover o KNN da comparação final (ver
-> justificativa em `docs/decisoes_modelagem.md`, seção 4) porque ele não
-> recebe o mesmo tratamento de desbalanceamento de classes que os outros
-> três modelos — uma comparação estruturalmente desigual. Isso não muda
-> nenhum gráfico deste documento (o modelo escolhido, Random Forest, já
-> era o melhor mesmo com o KNN na disputa), só reduz a tabela de 4 para 3
-> linhas na próxima execução.
-
 ## 1. Comparação de modelos de classificação
 
 A pergunta desta seção é "qual dos algoritmos testados classifica melhor
-o risco de baixa cobertura, e por quê?". Comparamos quatro modelos no
+o risco de baixa cobertura, e por quê?". Comparamos três modelos no
 conjunto de **validação** (o teste ainda não foi usado neste ponto — ver
 `docs/decisoes_modelagem.md`, seção 3, sobre por que o teste é reservado
 para o final):
@@ -32,22 +22,35 @@ para o final):
 | Modelo | F1 validação | Accuracy | Precision | Recall | ROC-AUC |
 |---|---|---|---|---|---|
 | **Random Forest** (melhor) | **0,418** | 0,583 | 0,321 | 0,598 | 0,627 |
-| Regressão Logística | 0,412 | 0,539 | — | 0,646 | 0,592 |
-| XGBoost | 0,405 | — | — | — | 0,619 |
-| KNN | 0,188 | 0,690 (maior) | — | 0,144 (menor) | — |
+| Regressão Logística | 0,412 | 0,539 | 0,303 | 0,646 | 0,592 |
+| XGBoost | 0,405 | 0,584 | 0,316 | 0,565 | 0,619 |
 
 **Leitura:** Random Forest venceu por F1, com margem pequena sobre a
 Regressão Logística (0,418 vs. 0,412) — o suficiente para justificar o
 uso de um modelo mais robusto a não-linearidade, mas pequeno o bastante
 para não descartar a Regressão Logística como alternativa mais simples e
 interpretável, caso a explicabilidade seja prioridade para o gestor de
-saúde pública. O caso do KNN é o mais revelador: ele tem a **maior
-acurácia** (0,690) e o **menor recall** (0,144) da tabela ao mesmo
-tempo — o sintoma clássico de um modelo que aprendeu a prever "não é
-baixa cobertura" na maior parte das vezes, o que já acerta ~75% por causa
-do desbalanceamento de classes (~25% dos municípios são de baixa
-cobertura, ver `docs/decisoes_modelagem.md`, seção 2), sem realmente
-aprender a identificar o grupo de risco.
+saúde pública. Regressão Logística e XGBoost, por sua vez, ficam
+tecnicamente empatados por F1 (0,412 vs. 0,405), mas com um trade-off
+bem diferente entre precisão e recall: a Regressão Logística prioriza
+recall (0,646, o maior dos três) às custas de precisão (0,303, a menor);
+XGBoost é mais conservador (recall 0,565, precisão 0,316) — para o caso
+de negócio de priorizar campanhas, recall alto tem mais valor prático
+(deixar de identificar um município de risco custa mais do que investigar
+um que não precisava), o que reforça a Regressão Logística como
+alternativa legítima ao Random Forest, não só um baseline a ser
+descartado.
+
+**Nota sobre o KNN:** uma versão anterior deste notebook também testou
+KNN. Ele foi removido da comparação final — não por preferência
+metodológica, mas porque a comparação com ele era estruturalmente
+desigual (`KNeighborsClassifier` do scikit-learn não aceita o parâmetro
+`class_weight`, então, ao contrário dos três modelos acima, nunca recebeu
+o mesmo tratamento de desbalanceamento de classes) e, mesmo assim, teve o
+pior F1 de validação (0,188) com o padrão clássico de um modelo
+enviesado para a classe majoritária — maior acurácia (0,690) e, ao mesmo
+tempo, menor recall (0,144) da comparação. Justificativa completa em
+`docs/decisoes_modelagem.md`, seção 4.
 
 ## 2. Avaliação do modelo escolhido no teste
 
