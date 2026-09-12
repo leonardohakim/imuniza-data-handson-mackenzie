@@ -37,7 +37,7 @@ transversal (cross-sectional).
 | `qtd_estabelecimentos_saude_sus` adicionada a `colunas_obrigatorias` (município sem ela é descartado, não imputado) | Mesmo critério das demais colunas obrigatórias (acima). Na prática não descarta nenhum município hoje (CNES tem cobertura completa dos ~5.571 municípios do refinado), mas protege contra uma cobertura futura parcial do CNES sem precisar de uma decisão nova. |
 | Feature condicional: `log_densidade_hab_km2` (IBGE/SIDRA) — só entra no conjunto de features se a coluna `densidade_hab_km2` já existir no `refined` | Diferente do CNES, a área territorial (fonte SIDRA) enfrentou bloqueio de rede (WAF) no ambiente usado nesta sessão, então nem sempre está disponível no momento de rodar o notebook. Uma checagem condicional (`if "densidade_hab_km2" in modelagem.columns`) deixa o notebook robusto a essa ausência temporária — roda normalmente sem a feature, e passa a incluí-la automaticamente assim que `clean_area.py`/`build_coverage.py` tiverem rodado, sem precisar editar o notebook de novo. |
 | `FEATURES_ESCALAR` (lista de features que passam por `StandardScaler`) construída dinamicamente a partir de `FEATURES_NUMERICAS`, em vez de hardcoded na célula do `ColumnTransformer` | Antes da adição do CNES/área, a lista de colunas do `StandardScaler` era hardcoded (`["log_populacao", "log_pib_per_capita"]`) separadamente da lista `FEATURES_NUMERICAS` usada para montar `X` — um risco real de bug silencioso: `ColumnTransformer` descarta silenciosamente (não levanta erro) qualquer coluna de `X` que não apareça em nenhum transformador, então uma feature nova adicionada a `FEATURES_NUMERICAS` sem atualizar essa lista separada simplesmente seria ignorada pelo modelo, sem aviso nenhum. Tornar a lista dinâmica (`[f for f in FEATURES_NUMERICAS if f != "fronteira"]`) elimina essa classe de bug — vale tanto para a classificação (seção 3) quanto para a regressão (seção 7), que reaproveita a mesma lista. |
-| Correlação de cada feature nova com a cobertura impressa na própria célula de construção, antes de decidir usá-la | Diferente das quatro features originais (validadas por exploração prévia no notebook 02, seções 3/5/6), CNES e área foram adicionadas depois, sem uma etapa própria de análise exploratória. Imprimir a correlação na hora da construção mantém alguma visibilidade sobre a força do sinal de cada feature nova antes dela entrar no modelo, mesmo sem repetir todo o processo de exploração do notebook 02. |
+| Correlação de cada feature nova com a cobertura impressa na própria célula de construção, antes de decidir usá-la | Diferente das quatro features originais (validadas por exploração prévia no notebook 02, seções 3/5/6), CNES e área foram adicionadas depois, sem uma etapa própria de análise exploratória. Imprimir a correlação na hora da construção mantém alguma visibilidade sobre a força do sinal de cada feature nova antes dela entrar no modelo, mesmo sem repetir todo o processo de exploração do notebook 02. Valores observados com dado real: CNES 0,089 (fraca, mas ver seção 9 sobre importância vs. correlação); densidade 0,105 (negativa — municípios mais densos tendem a cobertura levemente menor). |
 
 ## 2. Definição do alvo (`baixa_cobertura`)
 
@@ -140,30 +140,107 @@ temporal com um segundo ano de dados (2024) — mais alinhada ao objetivo
 original do projeto (ver "Objetivo desta etapa" acima) do que mais uma
 feature transversal.
 
-## 9. Decisão final: manter os três modelos de regressão, mesmo empatados
+## 9. Resultados observados contra dados reais (checagem pós-fronteira/área oficiais)
 
-A comparação de validação (seção 8) mostrou os três modelos
-tecnicamente empatados por RMSE — Ridge 54,66, XGBoost 54,68, Random
-Forest 54,76, uma diferença de até 0,1 numa escala de ~55, que é ruído
-de amostragem, não sinal. Diante desse empate, a decisão foi manter os
-três na comparação final, em vez de reportar só o vencedor (Ridge),
-com a seguinte justificativa por modelo:
+A seção 8 fechou o ciclo do CNES. Esta seção fecha o ciclo seguinte:
+`download_fronteira`/`clean_fronteira`/`download_area`/`clean_area`/
+`build_coverage` rodaram contra dado real (lista oficial de fronteira do
+IBGE e densidade demográfica via SIDRA) e o notebook foi reexecutado
+ponta a ponta com as duas features substituindo a aproximação por UF e
+preenchendo a lacuna condicional de densidade.
+
+**Classificação — antes (só CNES) vs. depois (fronteira oficial + área):**
+
+| Métrica | Antes (seção 8) | Depois (fronteira + área reais) |
+|---|---|---|
+| F1 validação (melhor modelo, Random Forest) | 0,418 | 0,435 |
+| F1 teste | 0,391 | 0,384 |
+| ROC-AUC teste | 0,591 | 0,584 |
+
+A validação melhorou (F1 +0,017); o teste caiu ligeiramente (F1 −0,007,
+ROC-AUC −0,007) — inverso do que se esperaria se o ganho fosse puramente
+sinal novo. Leitura: dado o tamanho do teste (836 municípios) e a mesma
+sensibilidade a qual partição concentra outliers já registrada na seção
+8 para a regressão, essa oscilação pequena e em sentidos opostos é mais
+consistente com ruído de amostragem do que com uma piora real — o gap
+treino/validação do Random Forest segue pequeno (0,452 vs. 0,435,
+impresso na célula de overfitting do notebook), sem sinal de que o
+modelo passou a decorar a validação.
+
+**O achado mais importante desta rodada não é de desempenho agregado, é
+de viés de medição.** A importância de `bin_fronteira` no Random Forest
+da classificação **caiu de ~0,13 (aproximação por UF) para ~0,03 (lista
+oficial do IBGE)** — de "4ª feature mais importante" para "penúltima,
+quase empatada com a dummy de região menos relevante". Interpretação:
+a aproximação por UF (11 estados inteiros marcados como "1") não estava
+medindo "efeito de fronteira" com precisão — estava, em parte, medindo
+o efeito de pertencer a esses estados de forma geral (call que sofre
+overlap forte com `regiao`, sobretudo Norte). Corrigir a medição não só
+não confirmou o sinal antigo como o dissolveu quase por completo, na
+classificação. Densidade demográfica (`log_densidade_hab_km2`), por sua
+vez, entrou direto na 4ª posição de importância (~0,16) — um sinal novo
+genuíno, não apenas uma variável substituindo outra.
+
+**Na regressão o padrão foi diferente**, e por isso vale registrar os
+dois lados: no XGBoost (novo vencedor por RMSE, seção 10), `bin_fronteira`
+é a **2ª feature mais importante** (~0,18, atrás só de `cat_regiao_Centro-Oeste`,
+~0,185) — mesmo com a lista oficial, não a aproximação. Ou seja, a
+fronteira tem pouco poder para prever **em qual quartil** de cobertura um
+município cai (classificação), mas pesa bastante para prever a
+**magnitude exata** da cobertura (regressão) — consistente com o efeito
+"caravana da vacina" já registrado no notebook 02 (municípios de
+fronteira puxando a cobertura para valores muito altos, não só
+"acima/abaixo de um corte"). Os dois resultados não se contradizem:
+medem coisas diferentes, e a leitura correta usa os dois lado a lado, não
+escolhe um e ignora o outro.
+
+**Regressão — comparação completa de validação (antes só constava Ridge
+como referência; agora com os três modelos e dado real):**
+
+| Modelo | RMSE validação | R² validação | Tempo de treino |
+|---|---|---|---|
+| **XGBoost** (melhor) | **54,04** | 0,038 | 13,7s |
+| Random Forest | 54,15 | 0,034 | 57,5s |
+| Ridge (linear) | 54,71 | 0,014 | 0,3s |
+
+Isso muda a leitura da seção anterior a esta atualização: **não é mais
+um empate técnico de três vias**. XGBoost e Random Forest (ambos em
+árvore) ficam próximos entre si (diferença de 0,11, ainda dentro de
+ruído razoável) e claramente à frente do Ridge (diferença de 0,67 do
+XGBoost para o Ridge — sete vezes maior que o spread anterior de 0,1
+que classificamos como ruído). No teste, o modelo agora vencedor
+(XGBoost) chega a RMSE = 15,25, MAE = 11,77 e **R² = 0,128** — mais que o
+dobro do R² de teste do Ridge na rodada anterior (0,062). A decisão de
+qual modelo recomendar como principal para a regressão está registrada
+na seção 10.
+
+## 10. Decisão final: XGBoost recomendado para a regressão; os três seguem documentados
+
+Com a lista oficial de fronteira e a densidade demográfica integradas
+(seção 9), o empate técnico de três vias que justificava manter os três
+modelos "sem escolher um vencedor" deixou de existir: XGBoost e Random
+Forest se separaram do Ridge por uma margem (0,67 de RMSE, R² de teste
+mais que dobrando) que não é mais explicável só por ruído de amostragem.
+A decisão passa a ser: **XGBoost como modelo principal recomendado**,
+com os outros dois mantidos na comparação e documentados, não descartados
+— pelos motivos por modelo abaixo:
 
 | Modelo | Por que manter (justificativa técnica) | Por que manter (justificativa de negócio) |
 |---|---|---|
-| **Ridge (linear)** | Venceu por RMSE (54,66) e foi o mais rápido de longe (0,4s vs. 10,8s do XGBoost e 43,5s do Random Forest) — nenhuma razão técnica para preferir um modelo mais caro que não entrega ganho de erro nenhum. | Interpretável via coeficientes, o mesmo trade-off já valorizado na Regressão Logística da classificação: dá para explicar a um gestor de saúde qual variável pesa mais na cobertura prevista (ex.: `bin_fronteira` domina os coeficientes — seção 5 de `docs/resultados_modelagem.md`). É o modelo recomendado como principal para a regressão. |
-| **Random Forest** | Pior RMSE dos três (54,76) e o mais lento (43,5s) — mas a diferença de RMSE é irrelevante frente ao ruído de amostragem, então não há base técnica para descartá-lo só por essa margem. Mantido como segundo "voto" de natureza diferente (não-linear, baseado em árvores) que confirma o mesmo teto baixo de R² visto no Ridge — reforça que o resultado é da falta de sinal nas features, não de uma limitação específica de um algoritmo. | Mesma robustez a outliers e relações não-lineares já valorizada na classificação (seção 4); documentado para transparência da comparação e como opção caso o projeto volte a usar ensembles no futuro. |
-| **XGBoost** | Segundo melhor por RMSE (54,68), quase empatado com o Ridge, com tempo de treino intermediário (10,8s). Gradient boosting costuma ser o mais forte em dados tabulares (mesma expectativa registrada na seção 4 para a classificação), mas aqui não superou um modelo linear simples — o resultado em si é informativo: confirma, com um terceiro algoritmo independente, que o teto de desempenho é da pobreza de features (seção "Limitações"), não da escolha de modelo. | Mesmo critério de negócio já registrado na seção 4: só vale o custo computacional extra se o ganho de desempenho for relevante. Aqui não foi — reforça a recomendação do Ridge como modelo principal, com XGBoost documentado como alternativa equivalente caso o Ridge precise ser descartado por algum motivo não relacionado a desempenho (ex.: necessidade de capturar não-linearidade se novas features forem adicionadas). |
+| **XGBoost** | Venceu por RMSE (54,04) na validação e dobrou o R² de teste do antigo vencedor (0,128 vs. 0,062 do Ridge) — o primeiro ganho de poder preditivo real visto neste projeto que não é atribuível a ruído (seção 9). Tempo de treino intermediário (13,7s), aceitável frente ao ganho. | **Modelo principal recomendado.** O ganho de R² é modesto em termos absolutos (ainda longe de um preditor forte), mas é grande o suficiente, e mede-se de forma consistente o bastante (validação e teste concordam na direção), para justificar recomendar o modelo mais forte em vez do mais simples — diferente da rodada anterior, aqui a complexidade extra se paga. |
+| **Random Forest** | Muito próximo do XGBoost por RMSE (54,15 vs. 54,04, diferença de 0,11 — essa sim dentro da faixa de ruído) — funciona como confirmação independente de que o ganho é real: dois algoritmos de árvore distintos, ajustados separadamente, chegaram a um resultado parecido e melhor que o linear. Mais lento (57,5s), sem ganho sobre o XGBoost que justifique o custo extra. | Documentado como alternativa equivalente ao XGBoost caso o projeto precise trocar de biblioteca/infraestrutura de serving no futuro (Random Forest tem menos dependências externas que XGBoost); não recomendado como principal por não superar o XGBoost em nenhum critério. |
+| **Ridge (linear)** | Ficou para trás pela primeira vez nesta comparação (RMSE 54,71, o pior dos três; R² de validação 0,014, menos da metade do XGBoost) — com dado mais rico (fronteira oficial + densidade), os modelos em árvore passaram a capturar interação/não-linearidade que o Ridge não alcança. Continua o mais rápido de longe (0,3s). | Mantido documentado, não como principal: perde a recomendação que tinha antes, mas continua sendo a opção mais interpretável (coeficiente por feature) — útil se o projeto algum dia precisar priorizar explicabilidade sobre desempenho para um público não técnico, ou como baseline de referência em iterações futuras. |
 
-**Por que não escolher só o Ridge e descartar os outros dois:** o
-empate entre três algoritmos de naturezas bem diferentes (um linear
-regularizado, dois em árvore) é, em si, um achado mais forte do que
-qualquer um dos três modelos isolado — confirma que o teto de ~0,015
-de R² na validação não é uma limitação de algoritmo específico, é uma
-limitação do conjunto de features disponível (mesma leitura já
-registrada na seção 7). Reportar só o vencedor esconderia esse
-achado; reportar os três, com a leitura de que eles empatam, é a
-versão mais honesta e mais útil do resultado.
+**Por que não descartar Ridge e Random Forest agora que há um vencedor
+claro:** o valor de mantê-los não é mais "eles empatam, então reportar
+só um esconderia isso" (a leitura da versão anterior desta seção) — é
+que a comparação entre os três, incluindo o próprio fato de que o
+empate anterior se desfez com features melhores, é em si um resultado
+que vale documentar: mostra que o teto de desempenho visto até aqui era,
+pelo menos em parte, causado por pobreza de features (seção 9), não só
+por uma limitação de algoritmo — e mostra isso de um jeito que só é
+visível comparando o antes e o depois lado a lado, não olhando só para
+o XGBoost isolado.
 
 ## Limitações conhecidas / próximos passos
 
@@ -183,21 +260,29 @@ versão mais honesta e mais útil do resultado.
   reamostragem (ex.: SMOTE) são uma melhoria possível, a testar com
   cautela para não gerar municípios sintéticos pouco realistas.
 - **Poucas features, mesmo após o enriquecimento**: população, PIB per
-  capita, fronteira, região e agora CNES (seção 8) — cinco sinais no total,
-  o que ainda é pouco para um F1/ROC-AUC fortes. O CNES ajudou como sinal
-  de importância (seção 8), mas não resolveu a causa raiz. A sazonalidade
-  mensal identificada no notebook 02 (seção 7) não entrou como feature
-  porque o dataset `refined` usado aqui é anual — incorporar o mês exigiria
-  remodelar o `refined` para preservar granularidade mensal por município
-  (ver `docs/decisoes_limpeza.md`, seção 2). Área/densidade (SIDRA) segue
-  como feature condicional (seção 1) até o bloqueio de rede daquela fonte
-  ser contornado.
+  capita, fronteira, região, CNES e agora densidade demográfica (seção 9)
+  — seis sinais no total, o que ainda é pouco para um F1/ROC-AUC fortes
+  na classificação, ainda que a regressão tenha se beneficiado visivelmente
+  (R² de teste dobrou, seção 9/10). A sazonalidade mensal identificada no
+  notebook 02 (seção 7) não entrou como feature porque o dataset `refined`
+  usado aqui é anual — incorporar o mês exigiria remodelar o `refined`
+  para preservar granularidade mensal por município (ver
+  `docs/decisoes_limpeza.md`, seção 2).
+- ~~**Área/densidade condicional ao bloqueio de rede do SIDRA**~~
+  (**resolvido**): `download_area.py`/`clean_area.py` já rodaram contra
+  dado real (mesmo workaround de download manual usado para fronteira —
+  ver `docs/decisoes_limpeza.md`, seção 10) e a densidade demográfica está
+  integrada ao dataset de modelagem desde a checagem da seção 9; a
+  checagem condicional no notebook (seção 1) vira robustez para reexecuções
+  sem essa camada, não mais uma lacuna ativa.
 - **RMSE da regressão sensível a qual partição concentra os outliers de
   cobertura**: como o split é estratificado só pelo alvo binário, não pelo
   alvo contínuo (seção 8), o RMSE de validação e de teste pode divergir
   bastante entre si mesmo para o mesmo modelo, dependendo de quantos
   municípios de cobertura extrema caem em cada partição por acaso da
-  amostragem — observado na prática (seção 8). Não corrigido nesta entrega.
+  amostragem — observado na prática (seção 8, e de novo na seção 9: o R²
+  de teste do XGBoost, 0,128, ficou acima do de validação, 0,038, o
+  inverso do padrão visto com o Ridge antes). Não corrigido nesta entrega.
 - **Custo computacional**: Random Forest foi o modelo mais lento para
   ajustar na grade de hiperparâmetros usada; em um cenário com mais dados
   (ex.: granularidade mensal), o custo de re-treinar os três modelos
