@@ -58,6 +58,7 @@ imuniza-data-handson-mackenzie/
 ├── docs/
 │   ├── entendimento_problema.md # Etapa 1: problema detalhado e perguntas de pesquisa
 │   ├── criterios_selecao_dados.md # Etapa 2: por que cada fonte foi escolhida, escopo geo/temporal
+│   ├── analise_exploratoria.md # Etapa 2: gráficos da EDA com narrativa e achados explicados
 │   ├── arquitetura_pipeline.svg # Diagrama de arquitetura (componentes e tecnologias)
 │   ├── dicionario_dados.md     # Schema de cada camada (raw/trusted/refined)
 │   ├── decisoes_limpeza.md     # Decisões de limpeza documentadas e justificadas
@@ -94,7 +95,7 @@ imuniza-data-handson-mackenzie/
 Coleta programática de dados de vacinação (SI-PNI/OpenDataSUS) e dados demográficos (IBGE/SIDRA), armazenados em camada raw preservando a granularidade original (município, mês/ano, tipo de vacina, faixa etária). Automação via Python (`pandas`, `requests`).
 
 ### Etapa 2: Análise Exploratória e Limpeza
-Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valores ausentes e inconsistências, e construção da métrica central de cobertura vacinal (doses aplicadas / população-alvo). Identificação de outliers e análise de correlação com variáveis socioeconômicas.
+Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valores ausentes e inconsistências, e construção da métrica central de cobertura vacinal (doses aplicadas / população-alvo). Identificação de outliers e análise de correlação com variáveis socioeconômicas. Os gráficos gerados pelo notebook e as conclusões da EDA (distribuição da cobertura, ranking por UF, relação com população e PIB per capita, sazonalidade) estão documentados com texto explicativo em [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md), em vez de ficarem soltos na pasta `reports/`.
 
 ### Etapa 3: Aplicação de ML e Treinamento de Modelos
 - **Classificação** de risco de baixa cobertura (alvo: abaixo do 1º quartil nacional) com quatro modelos comparados — Regressão Logística, KNN, Random Forest e XGBoost — com ajuste de hiperparâmetros (`GridSearchCV`) e tratamento explícito do desbalanceamento de classes

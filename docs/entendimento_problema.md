@@ -80,7 +80,9 @@ elas serão coletadas, limpas e armazenadas, e quais ferramentas
 implementam isso, estão documentadas separadamente em
 [`docs/criterios_selecao_dados.md`](criterios_selecao_dados.md) (Etapa 2:
 critérios de seleção), [`docs/decisoes_limpeza.md`](decisoes_limpeza.md)
-(Etapa 2: pré-processamento) e [`docs/decisoes_modelagem.md`](decisoes_modelagem.md)
+(Etapa 2: pré-processamento), [`docs/analise_exploratoria.md`](analise_exploratoria.md)
+(Etapa 2: gráficos da EDA com narrativa e achados) e
+[`docs/decisoes_modelagem.md`](decisoes_modelagem.md)
 (Etapa 3: modelagem) — a arquitetura completa da solução está no diagrama
 em [`docs/arquitetura_pipeline.svg`](arquitetura_pipeline.svg).
 
