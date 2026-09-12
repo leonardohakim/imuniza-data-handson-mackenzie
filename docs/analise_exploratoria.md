@@ -192,11 +192,14 @@ estatisticamente significativo dado o N grande da amostra.
 
 **Quais variáveis apresentam maior associação com a cobertura?** Entre as
 avaliadas nesta etapa, o notebook (seção 6.1) também calcula a correlação
-de Spearman entre população e cobertura para comparação direta com o PIB —
-ver o valor exato (`pop_rho`) na saída re-executada da célula
-correspondente. Isoladamente, nenhuma das duas variáveis numéricas
-(população, PIB per capita) mostra associação forte com a cobertura; o
-padrão geográfico de fronteira (seções 3 e 4) é visualmente mais marcante
+de Spearman entre população e cobertura para comparação direta com o PIB:
+rho = -0,1337 (p = 1,18e-23) — fraca, mas negativa, e um pouco mais forte
+em módulo do que a do PIB per capita (rho = 0,1035). O sinal negativo é
+consistente com o padrão já visto na seção 5: municípios menores tendem a
+ter cobertura levemente mais alta e mais volátil. Isoladamente, nenhuma
+das duas variáveis numéricas (população, PIB per capita) mostra associação
+forte com a cobertura; o padrão geográfico de fronteira (seções 3 e 4) é
+visualmente mais marcante
 do que qualquer uma delas, e é por isso que uma variável de fronteira
 (indicador de município fronteiriço) foi incorporada como feature na
 Etapa 3 — ver [`docs/decisoes_modelagem.md`](decisoes_modelagem.md).
