@@ -140,6 +140,31 @@ temporal com um segundo ano de dados (2024) — mais alinhada ao objetivo
 original do projeto (ver "Objetivo desta etapa" acima) do que mais uma
 feature transversal.
 
+## 9. Decisão final: manter os três modelos de regressão, mesmo empatados
+
+A comparação de validação (seção 8) mostrou os três modelos
+tecnicamente empatados por RMSE — Ridge 54,66, XGBoost 54,68, Random
+Forest 54,76, uma diferença de até 0,1 numa escala de ~55, que é ruído
+de amostragem, não sinal. Diante desse empate, a decisão foi manter os
+três na comparação final, em vez de reportar só o vencedor (Ridge),
+com a seguinte justificativa por modelo:
+
+| Modelo | Por que manter (justificativa técnica) | Por que manter (justificativa de negócio) |
+|---|---|---|
+| **Ridge (linear)** | Venceu por RMSE (54,66) e foi o mais rápido de longe (0,4s vs. 10,8s do XGBoost e 43,5s do Random Forest) — nenhuma razão técnica para preferir um modelo mais caro que não entrega ganho de erro nenhum. | Interpretável via coeficientes, o mesmo trade-off já valorizado na Regressão Logística da classificação: dá para explicar a um gestor de saúde qual variável pesa mais na cobertura prevista (ex.: `bin_fronteira` domina os coeficientes — seção 5 de `docs/resultados_modelagem.md`). É o modelo recomendado como principal para a regressão. |
+| **Random Forest** | Pior RMSE dos três (54,76) e o mais lento (43,5s) — mas a diferença de RMSE é irrelevante frente ao ruído de amostragem, então não há base técnica para descartá-lo só por essa margem. Mantido como segundo "voto" de natureza diferente (não-linear, baseado em árvores) que confirma o mesmo teto baixo de R² visto no Ridge — reforça que o resultado é da falta de sinal nas features, não de uma limitação específica de um algoritmo. | Mesma robustez a outliers e relações não-lineares já valorizada na classificação (seção 4); documentado para transparência da comparação e como opção caso o projeto volte a usar ensembles no futuro. |
+| **XGBoost** | Segundo melhor por RMSE (54,68), quase empatado com o Ridge, com tempo de treino intermediário (10,8s). Gradient boosting costuma ser o mais forte em dados tabulares (mesma expectativa registrada na seção 4 para a classificação), mas aqui não superou um modelo linear simples — o resultado em si é informativo: confirma, com um terceiro algoritmo independente, que o teto de desempenho é da pobreza de features (seção "Limitações"), não da escolha de modelo. | Mesmo critério de negócio já registrado na seção 4: só vale o custo computacional extra se o ganho de desempenho for relevante. Aqui não foi — reforça a recomendação do Ridge como modelo principal, com XGBoost documentado como alternativa equivalente caso o Ridge precise ser descartado por algum motivo não relacionado a desempenho (ex.: necessidade de capturar não-linearidade se novas features forem adicionadas). |
+
+**Por que não escolher só o Ridge e descartar os outros dois:** o
+empate entre três algoritmos de naturezas bem diferentes (um linear
+regularizado, dois em árvore) é, em si, um achado mais forte do que
+qualquer um dos três modelos isolado — confirma que o teto de ~0,015
+de R² na validação não é uma limitação de algoritmo específico, é uma
+limitação do conjunto de features disponível (mesma leitura já
+registrada na seção 7). Reportar só o vencedor esconderia esse
+achado; reportar os três, com a leitura de que eles empatam, é a
+versão mais honesta e mais útil do resultado.
+
 ## Limitações conhecidas / próximos passos
 
 - **Escopo transversal, não temporal**: falta um segundo ano de dados
