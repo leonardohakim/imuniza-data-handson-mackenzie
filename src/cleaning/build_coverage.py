@@ -51,6 +51,7 @@ def compute_coverage(
     area: pd.DataFrame | None = None,
     cnes: pd.DataFrame | None = None,
     fronteira: pd.DataFrame | None = None,
+    saneamento: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Junta população (IBGE, trusted) + doses (PNI, trusted) e calcula a
     métrica de cobertura. Função pura (sem I/O) para ser testável isoladamente
@@ -87,7 +88,16 @@ def compute_coverage(
     na tabela trusted de fronteira vira `fronteira = 0`, não `NaN`: a fonte
     é uma lista positiva completa (todo município na faixa aparece nela),
     então ausência já é, ela mesma, a resposta "não é de fronteira" — não é
-    lacuna de dado. Ver `docs/decisoes_limpeza.md`, seção 12."""
+    lacuna de dado. Ver `docs/decisoes_limpeza.md`, seção 12.
+
+    `saneamento` é opcional também (trusted, ver `clean_snis.py`): adiciona
+    `pct_atendimento_agua`, `pct_coleta_esgoto` e `pct_tratamento_esgoto`
+    (SNIS 2022, via Base dos Dados). Cruzado pelo `codigo_municipio` de 7
+    dígitos (mesmo sistema do IBGE usado por PIB/área/fronteira). Mesma
+    decisão de "não imputar" já usada para PIB/área: município sem
+    correspondência na trusted de saneamento fica com `NaN` nas três
+    colunas, não um valor fabricado. Ver `docs/decisoes_limpeza.md`,
+    seção 13."""
     doses_por_municipio = (
         doses.groupby("codigo_municipio")["doses_aplicadas"].sum().reset_index()
     )
@@ -168,6 +178,14 @@ def compute_coverage(
         # Único caso do arquivo onde ausência de match vira 0, não NaN — ver
         # docstring acima e docs/decisoes_limpeza.md, seção 12.
         coverage["fronteira"] = coverage["fronteira"].fillna(0).astype("int64")
+
+    if saneamento is not None:
+        saneamento_por_municipio = saneamento[
+            ["codigo_municipio", "pct_atendimento_agua", "pct_coleta_esgoto", "pct_tratamento_esgoto"]
+        ].drop_duplicates(subset=["codigo_municipio"])
+        coverage = coverage.merge(saneamento_por_municipio, on="codigo_municipio", how="left")
+        # Mesma decisão de "não imputar" já usada para PIB/área — ver
+        # docstring acima e docs/decisoes_limpeza.md, seção 13.
 
     coverage = coverage.drop(columns=["codigo_municipio_datasus"], errors="ignore")
 
@@ -280,7 +298,25 @@ def build_coverage(ano: int, ano_pib: int | None = None) -> pd.DataFrame:
             "Prosseguindo sem essa coluna."
         )
 
-    coverage = compute_coverage(populacao, doses, pib, area, cnes, fronteira)
+    # Saneamento básico (SNIS 2022, via Base dos Dados), assim como
+    # área/CNES/fronteira, é um snapshot sem partição por --ano (SNIS foi
+    # descontinuado em 2023 — ver docstring de download_snis.py/
+    # clean_snis.py). Mesmo padrão de degradação graciosa: sem essa
+    # trusted, as colunas de saneamento simplesmente não aparecem no
+    # refinado, e o notebook 03 segue sem essa feature.
+    saneamento = None
+    try:
+        saneamento = load_parquet(s3, BUCKET_TRUSTED, "saneamento/snis/saneamento_municipios.parquet")
+    except s3.exceptions.NoSuchKey:
+        print(
+            "[AVISO] Saneamento básico (SNIS) trusted não encontrado (rode "
+            "'python -m src.ingestion.download_snis' e "
+            "'python -m src.cleaning.clean_snis' primeiro se quiser incluir "
+            "o indicador de atendimento de água no dataset refinado). "
+            "Prosseguindo sem essa coluna."
+        )
+
+    coverage = compute_coverage(populacao, doses, pib, area, cnes, fronteira, saneamento)
 
     # Municípios com população no IBGE mas nenhuma dose registrada no PNI
     # para o ano: mantemos a linha (cobertura = 0%) em vez de descartar —

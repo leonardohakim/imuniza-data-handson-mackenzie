@@ -36,6 +36,8 @@ transversal (cross-sectional).
 | Feature nova: `log_estabelecimentos_saude_sus_por_100k_hab` (CNES, normalizado por população, não a contagem bruta) | Hipótese: acesso a infraestrutura de saúde facilita a vacinação — mesma linha de raciocínio já usada para `fronteira` (sinal geográfico de acesso). Normalizar por população (por 100 mil habitantes) evita que a feature vire um proxy quase redundante de `log_populacao` (a contagem bruta de estabelecimentos é dominada pelo tamanho do município — ver `docs/decisoes_limpeza.md`, seção 11). Usa só o subconjunto com atendimento ambulatorial SUS (`qtd_estabelecimentos_saude_sus`), não o total bruto do cadastro (que inclui estabelecimentos sem relação com vacinação, como consultórios particulares e laboratórios). |
 | `qtd_estabelecimentos_saude_sus` adicionada a `colunas_obrigatorias` (município sem ela é descartado, não imputado) | Mesmo critério das demais colunas obrigatórias (acima). Na prática não descarta nenhum município hoje (CNES tem cobertura completa dos ~5.571 municípios do refinado), mas protege contra uma cobertura futura parcial do CNES sem precisar de uma decisão nova. |
 | Feature condicional: `log_densidade_hab_km2` (IBGE/SIDRA) — só entra no conjunto de features se a coluna `densidade_hab_km2` já existir no `refined` | Diferente do CNES, a área territorial (fonte SIDRA) enfrentou bloqueio de rede (WAF) no ambiente usado nesta sessão, então nem sempre está disponível no momento de rodar o notebook. Uma checagem condicional (`if "densidade_hab_km2" in modelagem.columns`) deixa o notebook robusto a essa ausência temporária — roda normalmente sem a feature, e passa a incluí-la automaticamente assim que `clean_area.py`/`build_coverage.py` tiverem rodado, sem precisar editar o notebook de novo. |
+| Feature condicional: `pct_atendimento_agua` (SNIS 2022, saneamento básico, via Base dos Dados) — mesma checagem condicional de densidade, mas com um efeito colateral real: quando presente, descarta os municípios sem o indicador (~3% do dataset, bem mais que qualquer outra feature obrigatória já adicionada) | Ver `docs/decisoes_limpeza.md`, seção 13, para a justificativa completa da fonte, do ano de referência (2022) e de por que só água (não esgoto) virou feature. Diferente de densidade/CNES (perda desprezível), aqui o `dropna` tem um custo visível o suficiente para ser documentado explicitamente na própria célula do notebook, não só nesta tabela — decisão consciente de aceitar essa perda em troca de testar um sinal genuinamente novo (infraestrutura de saneamento, não só de saúde) contra a cobertura vacinal. |
+| Indicadores de esgoto (`indice_coleta_esgoto`, `indice_tratamento_esgoto`) do SNIS **não** entram no conjunto de features, mesmo estando na trusted de saneamento | Completude de só ~53% mesmo no ano mais completo (2022) — tratá-los como obrigatórios descartaria quase metade do dataset de modelagem, um custo desproporcional a qualquer ganho de sinal. Ficam disponíveis no `refined` para análise exploratória futura (ex.: se o projeto migrar para uma abordagem tolerante a `NaN`, como `HistGradientBoosting`, que aceita valores ausentes nativamente), mas fora do escopo desta entrega. |
 | `FEATURES_ESCALAR` (lista de features que passam por `StandardScaler`) construída dinamicamente a partir de `FEATURES_NUMERICAS`, em vez de hardcoded na célula do `ColumnTransformer` | Antes da adição do CNES/área, a lista de colunas do `StandardScaler` era hardcoded (`["log_populacao", "log_pib_per_capita"]`) separadamente da lista `FEATURES_NUMERICAS` usada para montar `X` — um risco real de bug silencioso: `ColumnTransformer` descarta silenciosamente (não levanta erro) qualquer coluna de `X` que não apareça em nenhum transformador, então uma feature nova adicionada a `FEATURES_NUMERICAS` sem atualizar essa lista separada simplesmente seria ignorada pelo modelo, sem aviso nenhum. Tornar a lista dinâmica (`[f for f in FEATURES_NUMERICAS if f != "fronteira"]`) elimina essa classe de bug — vale tanto para a classificação (seção 3) quanto para a regressão (seção 7), que reaproveita a mesma lista. |
 | Correlação de cada feature nova com a cobertura impressa na própria célula de construção, antes de decidir usá-la | Diferente das quatro features originais (validadas por exploração prévia no notebook 02, seções 3/5/6), CNES e área foram adicionadas depois, sem uma etapa própria de análise exploratória. Imprimir a correlação na hora da construção mantém alguma visibilidade sobre a força do sinal de cada feature nova antes dela entrar no modelo, mesmo sem repetir todo o processo de exploração do notebook 02. Valores observados com dado real: CNES 0,089 (fraca, mas ver seção 9 sobre importância vs. correlação); densidade 0,105 (negativa — municípios mais densos tendem a cobertura levemente menor). |
 
@@ -260,14 +262,20 @@ o XGBoost isolado.
   reamostragem (ex.: SMOTE) são uma melhoria possível, a testar com
   cautela para não gerar municípios sintéticos pouco realistas.
 - **Poucas features, mesmo após o enriquecimento**: população, PIB per
-  capita, fronteira, região, CNES e agora densidade demográfica (seção 9)
-  — seis sinais no total, o que ainda é pouco para um F1/ROC-AUC fortes
-  na classificação, ainda que a regressão tenha se beneficiado visivelmente
-  (R² de teste dobrou, seção 9/10). A sazonalidade mensal identificada no
-  notebook 02 (seção 7) não entrou como feature porque o dataset `refined`
-  usado aqui é anual — incorporar o mês exigiria remodelar o `refined`
-  para preservar granularidade mensal por município (ver
-  `docs/decisoes_limpeza.md`, seção 2).
+  capita, fronteira, região, CNES, densidade demográfica e agora água
+  (SNIS, seção 1) — sete sinais no total, o que ainda é pouco para um
+  F1/ROC-AUC fortes na classificação, ainda que a regressão tenha se
+  beneficiado visivelmente (R² de teste dobrou, seção 9/10). A
+  sazonalidade mensal identificada no notebook 02 (seção 7) não entrou
+  como feature porque o dataset `refined` usado aqui é anual — incorporar
+  o mês exigiria remodelar o `refined` para preservar granularidade
+  mensal por município (ver `docs/decisoes_limpeza.md`, seção 2).
+- **Indicadores de esgoto do SNIS (coleta/tratamento) ficam fora do
+  conjunto de features** por causa da baixa completude (~53% mesmo no
+  melhor ano) — diferente de água, incluí-los como obrigatórios
+  descartaria quase metade do dataset. Ficam disponíveis no `refined`
+  para uma abordagem futura tolerante a `NaN` (ver
+  `docs/decisoes_limpeza.md`, seção 13), não usados nesta entrega.
 - ~~**Área/densidade condicional ao bloqueio de rede do SIDRA**~~
   (**resolvido**): `download_area.py`/`clean_area.py` já rodaram contra
   dado real (mesmo workaround de download manual usado para fronteira —

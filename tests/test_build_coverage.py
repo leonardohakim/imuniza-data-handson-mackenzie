@@ -264,3 +264,52 @@ def test_municipio_sem_correspondencia_na_fronteira_fica_com_zero_nao_com_nan():
     assert alta_floresta["fronteira"] == 1
     assert ariquemes["fronteira"] == 0
     assert not pd.isna(ariquemes["fronteira"])
+
+
+# --- saneamento básico (SNIS, opcional) -----------------------------------
+
+def test_sem_saneamento_nao_adiciona_colunas_de_saneamento():
+    coverage = compute_coverage(_populacao(), _doses_minimas(), saneamento=None)
+    assert "pct_atendimento_agua" not in coverage.columns
+    assert "pct_coleta_esgoto" not in coverage.columns
+    assert "pct_tratamento_esgoto" not in coverage.columns
+
+
+def test_municipio_sem_saneamento_fica_com_nan_nao_com_zero():
+    # Mesma decisão de "não imputar" já usada para PIB/área: ausência de
+    # dado no SNIS é lacuna de dado, não um indicador zerado.
+    saneamento = pd.DataFrame({
+        "codigo_municipio": ["1100015"],
+        "pct_atendimento_agua": [95.5],
+        "pct_coleta_esgoto": [40.0],
+        "pct_tratamento_esgoto": [35.0],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), saneamento=saneamento)
+
+    alta_floresta = coverage.set_index("codigo_municipio").loc["1100015"]
+    ariquemes = coverage.set_index("codigo_municipio").loc["1100023"]
+    assert alta_floresta["pct_atendimento_agua"] == 95.5
+    assert pd.isna(ariquemes["pct_atendimento_agua"])
+    assert pd.isna(ariquemes["pct_coleta_esgoto"])
+    assert pd.isna(ariquemes["pct_tratamento_esgoto"])
+
+
+def test_saneamento_esgoto_pode_ficar_nan_mesmo_com_agua_presente():
+    # Assimetria intencional: água tem completude alta o bastante para virar
+    # feature obrigatória no notebook (ver docs/decisoes_modelagem.md), mas
+    # esgoto não — build_coverage só repassa o que está na trusted, sem
+    # exigir que as três colunas estejam preenchidas juntas.
+    saneamento = pd.DataFrame({
+        "codigo_municipio": ["1100015"],
+        "pct_atendimento_agua": [95.5],
+        "pct_coleta_esgoto": [None],
+        "pct_tratamento_esgoto": [None],
+    })
+
+    coverage = compute_coverage(_populacao(), _doses_minimas(), saneamento=saneamento)
+
+    alta_floresta = coverage.set_index("codigo_municipio").loc["1100015"]
+    assert alta_floresta["pct_atendimento_agua"] == 95.5
+    assert pd.isna(alta_floresta["pct_coleta_esgoto"])
+    assert pd.isna(alta_floresta["pct_tratamento_esgoto"])
