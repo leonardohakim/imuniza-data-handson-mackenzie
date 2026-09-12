@@ -31,6 +31,8 @@ solução técnica) em
 - **DATASUS / TabNet (SI-PNI)**: Sistema de Informações do Programa Nacional de Imunizações
 - **OpenDataSUS**: bases granulares de doses aplicadas por município, período e faixa etária (PNI), e cadastro de estabelecimentos de saúde (CNES)
 - **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita, área territorial/densidade demográfica); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
+- **IBGE (lista oficial de faixa de fronteira, Lei 6.634/1979)**: municípios com sede na faixa de fronteira (588 municípios, 2024) — ver `docs/decisoes_limpeza.md`, seção 12
+- **SNIS (saneamento básico), via Base dos Dados**: indicadores de atendimento de água e esgoto por município (ano de referência 2022, o mais completo do painel) — ver `docs/decisoes_limpeza.md`, seção 13
 
 Por que cada fonte foi escolhida (e o que foi avaliado e descartado), o
 recorte geográfico (nacional) e temporal (ano completo de 2025), a
@@ -63,6 +65,7 @@ imuniza-data-handson-mackenzie/
 │   ├── dicionario_dados.md     # Schema de cada camada (raw/trusted/refined)
 │   ├── decisoes_limpeza.md     # Decisões de limpeza documentadas e justificadas
 │   ├── decisoes_modelagem.md   # Etapa 3: alvo, algoritmos, split, métricas, limitações
+│   ├── resultados_modelagem.md # Etapa 3: gráficos da modelagem com narrativa e achados explicados
 │   ├── evidencia_execucao.md   # Prova de execução real do pipeline ponta a ponta
 │   └── guia_setup_etapa2.md    # Passo a passo de reprodução, com troubleshooting
 ├── notebooks/                  # Notebooks de exploracao, prototipagem e modelagem
@@ -74,6 +77,8 @@ imuniza-data-handson-mackenzie/
 │   │   ├── download_pib.py
 │   │   ├── download_area.py    # área territorial (IBGE/SIDRA); não particionado por --ano, ver docs/decisoes_limpeza.md
 │   │   ├── download_cnes.py    # estabelecimentos de saúde (CNES); tb não particionado por --ano
+│   │   ├── download_fronteira.py # lista oficial de faixa de fronteira (IBGE, 2024); tb não particionado por --ano
+│   │   ├── download_snis.py    # saneamento básico (SNIS, via Base dos Dados); painel histórico completo
 │   │   ├── download_pni.py     # opcional — ver nota no "Como Executar"
 │   │   └── inspect_pni.py
 │   └── cleaning/                  # Etapa 2: limpeza (bucket "raw" -> "trusted" -> "refined")
@@ -81,6 +86,8 @@ imuniza-data-handson-mackenzie/
 │       ├── clean_pib.py
 │       ├── clean_area.py
 │       ├── clean_cnes.py
+│       ├── clean_fronteira.py
+│       ├── clean_snis.py       # filtra o ano de referência (2022) e separa água (obrigatória) de esgoto (informativo)
 │       ├── clean_pni.py
 │       └── build_coverage.py
 ├── tests/                        # Testes automatizados (pytest)
@@ -98,11 +105,12 @@ Coleta programática de dados de vacinação (SI-PNI/OpenDataSUS) e dados demogr
 Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valores ausentes e inconsistências, e construção da métrica central de cobertura vacinal (doses aplicadas / população-alvo). Identificação de outliers e análise de correlação com variáveis socioeconômicas. Os gráficos gerados pelo notebook e as conclusões da EDA (distribuição da cobertura, ranking por UF, relação com população e PIB per capita, sazonalidade) estão documentados com texto explicativo em [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md), em vez de ficarem soltos na pasta `reports/`.
 
 ### Etapa 3: Aplicação de ML e Treinamento de Modelos
-- **Classificação** de risco de baixa cobertura (alvo: abaixo do 1º quartil nacional) com quatro modelos comparados — Regressão Logística, KNN, Random Forest e XGBoost — com ajuste de hiperparâmetros (`GridSearchCV`) e tratamento explícito do desbalanceamento de classes
-- Features: população, PIB per capita, fronteira, região e estabelecimentos de saúde (CNES); área/densidade demográfica (IBGE/SIDRA) entra automaticamente quando disponível — ver `docs/decisoes_modelagem.md`, seção 1
+- **Classificação** de risco de baixa cobertura (alvo: abaixo do 1º quartil nacional) com três modelos comparados — Regressão Logística, Random Forest e XGBoost — com ajuste de hiperparâmetros (`GridSearchCV`) e tratamento explícito do desbalanceamento de classes (um quarto modelo, KNN, foi testado e removido da comparação final por não aceitar o mesmo tratamento de classes desbalanceadas — ver `docs/decisoes_modelagem.md`, seção 4)
+- Features: população, PIB per capita, fronteira (lista oficial IBGE), região, estabelecimentos de saúde (CNES), densidade demográfica (IBGE/SIDRA) e saneamento básico/água (SNIS) — as três últimas entram automaticamente quando disponíveis no dataset refinado, ver `docs/decisoes_modelagem.md`, seção 1
 - **Enquadramento complementar de regressão** (alvo contínuo, mesma divisão treino/validação/teste) para rankear municípios por urgência dentro do grupo de risco — ver `docs/decisoes_modelagem.md`, seção 7
 - **Clusterização** (K-Means, k escolhido por silhouette score) para segmentar municípios por perfil de cobertura e características socioeconômicas
-- Matriz de comparação de modelos, matriz de confusão, curva ROC, importância de features e checagem de overfitting (treino vs. validação)
+- Matriz de comparação de modelos, matriz de confusão, curva ROC, importância de features e checagem de overfitting (treino vs. validação) — narrativa completa dos gráficos em [`docs/resultados_modelagem.md`](docs/resultados_modelagem.md)
+- **Random Forest e XGBoost tratados como equivalentes na regressão**, não um vencedor único: o modelo com menor RMSE trocou entre as duas últimas reexecuções por uma margem cada vez menor (0,11 → 0,05), evidência de que a diferença está dentro do ruído amostral, não de uma vantagem real de um algoritmo sobre o outro — decisão registrada com a justificativa completa em `docs/decisoes_modelagem.md`, seção 10
 - Escopo **transversal** (um único ano, 2025), não temporal — ver `docs/decisoes_modelagem.md` sobre por que "prever risco futuro" exigiria um segundo ano de dados que ainda não temos
 
 ## Tecnologias
@@ -128,6 +136,8 @@ python -m src.ingestion.download_ibge --ano 2025
 python -m src.ingestion.download_pib --ano 2023   # PIB municipal (variável socioeconômica); série vai até 2023
 python -m src.ingestion.download_area            # área territorial (IBGE/SIDRA); sem --ano de propósito, ver docs/decisoes_limpeza.md
 python -m src.ingestion.download_cnes             # estabelecimentos de saúde (CNES); tb sem --ano de propósito
+python -m src.ingestion.download_fronteira        # lista oficial de faixa de fronteira (IBGE, 2024); tb sem --ano de propósito
+python -m src.ingestion.download_snis             # saneamento básico (SNIS, via Base dos Dados); baixa o painel histórico completo
 python -m src.ingestion.inspect_pni --ano 2025 --mes 1   # confirma o schema real antes de limpar
 ```
 
@@ -142,8 +152,10 @@ python -m src.cleaning.clean_ibge --ano 2025
 python -m src.cleaning.clean_pib --ano 2023
 python -m src.cleaning.clean_area                  # área territorial/densidade demográfica; sem --ano de propósito
 python -m src.cleaning.clean_cnes                  # estabelecimentos de saúde; tb sem --ano de propósito
+python -m src.cleaning.clean_fronteira              # lista oficial de faixa de fronteira; tb sem --ano de propósito
+python -m src.cleaning.clean_snis                   # saneamento básico; filtra o ano de referência (2022) internamente
 python -m src.cleaning.clean_pni --ano 2025
-python -m src.cleaning.build_coverage --ano 2025   # cruza PIB, área/densidade e CNES automaticamente (--ano-pib, default 2023)
+python -m src.cleaning.build_coverage --ano 2025   # cruza PIB, área/densidade, CNES, fronteira e saneamento automaticamente (--ano-pib, default 2023)
 jupyter notebook notebooks/02_analise_exploratoria.ipynb
 ```
 
