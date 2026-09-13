@@ -101,15 +101,16 @@ abrangência nacional.
   presente no dataset mantém as duas variáveis (população e densidade)
   consistentes entre si. Justificativa completa em
   `docs/decisoes_limpeza.md`, seção 10.
-- **Status conhecido**: esta fonte enfrentou bloqueio de rede (WAF/F5 do
-  lado do provedor) no ambiente de desenvolvimento usado nesta sessão,
-  intermitente e depois persistente. O código de ingestão
-  (`download_area.py`/`clean_area.py`) está pronto, testado e funciona
-  quando a fonte responde; o `build_coverage.py` e o notebook de modelagem
-  seguem sem essa feature (condicional, documentado em
-  `docs/decisoes_modelagem.md`, seção 1) enquanto o bloqueio persistir —
-  não é uma limitação do código do projeto, é uma indisponibilidade
-  externa da fonte a partir da rede usada para desenvolver.
+- **Histórico de disponibilidade (resolvido)**: esta fonte chegou a
+  enfrentar bloqueio de rede (WAF/F5 do lado do provedor) no ambiente de
+  desenvolvimento, intermitente e depois persistente, e por um período o
+  projeto rodou sem a feature — a ingestão é condicional justamente por
+  isso (ver `docs/decisoes_modelagem.md`, seção 1). O dado foi obtido
+  posteriormente e **área/densidade está materializada no `refined` e em
+  uso como feature**: `log_densidade_hab_km2` tem correlação de -0,104 com
+  a cobertura e aparece em 4º lugar na importância do Random Forest
+  (~0,14). A degradação graciosa continua no código como robustez, não
+  como estado atual.
 
 ### Estabelecimentos de saúde — CNES (feature adicional)
 
@@ -133,26 +134,86 @@ abrangência nacional.
   filtro de atendimento ambulatorial SUS, código de município de 6
   dígitos) em `docs/decisoes_limpeza.md`, seção 11.
 
+### Faixa de fronteira — IBGE, Lei 6.634/1979 (feature adicional)
+
+- **Escolhida**: planilha oficial "Municípios da Faixa de Fronteira e
+  Cidades-Gêmeas" (IBGE, edição 2024), publicada no GeoFTP de organização
+  do território.
+- **Por que**: a análise exploratória (notebook 02, seção 3) mostrou que os
+  municípios de cobertura extrema são polos de fronteira que atendem
+  não residentes — foi o achado geográfico mais forte da Etapa 2, mais
+  marcante que qualquer variável socioeconômica. Até então esse sinal
+  entrava no modelo como uma **aproximação grosseira por UF** (11 estados
+  inteiros marcados como "fronteira"), que contamina com o mesmo valor
+  municípios a centenas de quilômetros da linha divisória. A lista oficial
+  substitui essa aproximação por um sinal municipal preciso.
+- **Critério adotado**: `fronteira = 1` quando a **sede** do município está
+  dentro da faixa (`FAIXA_SEDE = "sim"`), não quando o território apenas
+  intersecta a faixa. São **511 municípios** com sede na faixa, de 588 que
+  a intersectam. Justificativa completa em `docs/decisoes_limpeza.md`,
+  seção 12.
+- **Ressalva de coleta**: o GeoFTP bloqueou (WAF) as requisições feitas a
+  partir do ambiente de nuvem; o arquivo foi baixado por uma rede sem o
+  bloqueio e enviado ao bucket `raw`. O script
+  (`download_fronteira.py`) continua sendo a forma reprodutível de obter o
+  dado quando a rede permite — mesma situação já vivida com a área
+  territorial.
+
+### Saneamento básico — SNIS, via Base dos Dados (feature adicional)
+
+- **Escolhida**: tabela `br_mdr_snis.municipio_agua_esgoto` do SNIS
+  (Sistema Nacional de Informações sobre Saneamento, Ministério das
+  Cidades), acessada pela **Base dos Dados**, ano de referência **2022**.
+- **Por que**: saneamento é um proxy de infraestrutura urbana básica e de
+  presença do Estado no município — uma hipótese plausível de fator
+  associado ao acesso a serviços de saúde, e de natureza diferente das
+  features que já tínhamos (demografia, renda, rede de saúde, geografia).
+- **Por que só o indicador de água**: coleta e tratamento de esgoto têm
+  completude de apenas ~53% mesmo no ano mais completo; exigi-los
+  descartaria quase metade do dataset. Ficam disponíveis no `refined` para
+  análise futura, fora do conjunto de features — ver
+  `docs/decisoes_limpeza.md`, seção 13.
+- **Por que via Base dos Dados e não direto do SNIS**: o painel oficial do
+  SNIS não expõe uma API tabular estável para download programático; a
+  Base dos Dados republica a mesma série em formato consultável e versionado.
+  É a **única fonte do projeto que passa por um intermediário** — uma
+  organização da sociedade civil, não um órgão federal —, o que é uma
+  dependência a mais na cadeia de proveniência e está registrado aqui de
+  propósito.
+- **Custo assumido**: o indicador de água não cobre todos os municípios;
+  aplicando o critério "descartar, não imputar" do projeto, **146
+  municípios saem do conjunto de modelagem** (5.571 → 5.424). Foi o maior
+  descarte do projeto, e foi considerado aceitável (~2,6%) porque imputar
+  um percentual de saneamento fabricaria justamente o tipo de dado que a
+  feature pretende medir.
+
 ## Verificabilidade das fontes
 
-Todas as cinco fontes são **APIs/portais públicos de órgãos oficiais do
+Seis das sete fontes são **APIs/portais públicos de órgãos oficiais do
 governo federal** (Ministério da Saúde / DATASUS e IBGE), sem custo e sem
 autenticação, com URLs exatas fixadas no código de ingestão
 (`src/ingestion/download_ibge.py`, `download_pib.py`, `download_pni.py`,
-`download_area.py`, `download_cnes.py`) — qualquer pessoa pode acessar as
-mesmas URLs e obter os mesmos dados brutos que o projeto usa, o que torna
-a coleta auditável e reprodutível por terceiros.
+`download_area.py`, `download_cnes.py`, `download_fronteira.py`) — qualquer
+pessoa pode acessar as mesmas URLs e obter os mesmos dados brutos que o
+projeto usa, o que torna a coleta auditável e reprodutível por terceiros.
+
+A sétima, o SNIS (`download_snis.py`), é dado público de um órgão federal
+(Ministério das Cidades) mas acessado **através da Base dos Dados**, um
+intermediário — a URL fixada no código aponta para lá, não para o painel do
+SNIS. A proveniência continua verificável, mas com um elo a mais.
 
 ## Aspectos legais, éticos e vieses potenciais
 
 ### LGPD e privacidade
 
-As cinco fontes usadas são **dados públicos de órgãos oficiais**
-(DATASUS/OpenDataSUS e IBGE), disponibilizados sob política de dados
-abertos exatamente para uso público e reprodutível — não é feita nenhuma
-coleta de dado de fonte privada ou restrita. Área territorial (medição
-geográfica) e CNES (cadastro de **estabelecimentos**, não de pessoas) não
-levantam questão de dado pessoal — a unidade de registro em ambos já é o
+As sete fontes usadas são **dados públicos de órgãos oficiais**
+(DATASUS/OpenDataSUS, IBGE e SNIS/Ministério das Cidades — este último via
+Base dos Dados), disponibilizados sob política de dados abertos exatamente
+para uso público e reprodutível — não é feita nenhuma coleta de dado de
+fonte privada ou restrita. Área territorial (medição geográfica), faixa de
+fronteira (classificação territorial), saneamento (indicador agregado por
+município) e CNES (cadastro de **estabelecimentos**, não de pessoas) não
+levantam questão de dado pessoal — a unidade de registro em todos já é o
 estabelecimento/município, não o indivíduo. Ainda assim, o PNI nasce como
 registro individual (uma linha por dose aplicada, potencialmente
 identificável por paciente na fonte original), o que traz uma
@@ -174,8 +235,9 @@ responsabilidade de tratamento mesmo sendo dado público:
   PNI não são lidos nem armazenados pelo pipeline.
 - **Não há cruzamento com nenhuma outra base que permita reidentificar
   indivíduos**: o cruzamento final (`build_coverage.py`) é feito por
-  código de município, não por pessoa, contra população (IBGE) e PIB
-  (IBGE) — ambas já agregadas na fonte.
+  código de município, não por pessoa, contra população e PIB (IBGE), área
+  territorial (IBGE), faixa de fronteira (IBGE), CNES (DataSUS) e
+  saneamento (SNIS) — todas já agregadas por município na própria fonte.
 - Por operar exclusivamente com agregados por município (nunca por
   indivíduo) e nunca persistir granularidade de paciente, o projeto evita,
   por desenho, o tipo de dado que a LGPD mais protege (dado pessoal, e
@@ -216,7 +278,7 @@ documentada:
   propaga para a Etapa 3: `log_pib_per_capita` é usada como feature dos
   modelos de classificação, então qualquer viés desse proxy também limita
   a interpretação dos coeficientes/importâncias de feature — ver
-  `docs/decisoes_modelagem.md`, seção "Interpretação final".
+  `docs/decisoes_modelagem.md`, seção 11.
 - **Viés de proxy de acesso à saúde único (CNES)**: `qtd_estabelecimentos_saude_sus`
   conta estabelecimentos com atendimento ambulatorial SUS, mas não
   distingue capacidade real (tamanho, equipe, se de fato aplica vacina)
@@ -224,15 +286,27 @@ documentada:
   estabelecimentos pequenos e ainda assim baixa capacidade de vacinação,
   ou poucos estabelecimentos mas de grande porte. É um proxy de
   infraestrutura, não uma medida direta de capacidade vacinal. Achado real
-  registrado em `docs/decisoes_modelagem.md`, seção 8: a feature carrega
+  registrado em `docs/decisoes_modelagem.md`, seção 11: a feature carrega
   sinal relevante no modelo (2ª maior importância no Random Forest) apesar
   dessa limitação.
 - **Viés de imprecisão geográfica (densidade)**: `densidade_hab_km2` é
   uma média municipal — não captura concentração populacional desigual
   dentro do próprio município (uma cidade grande com zona rural extensa e
   pouco povoada tem densidade média baixa mesmo com bolsões densamente
-  povoados). Feature ainda não materializada nesta execução (ver "Status
-  conhecido" acima).
+  povoados). A feature está em uso (4ª maior importância), com essa
+  ressalva de interpretação.
+- **Viés de cobertura do indicador de saneamento**: o SNIS depende de os
+  prestadores de serviço **reportarem** os dados, e municípios menores ou
+  com serviço menos estruturado são justamente os que mais faltam no
+  painel. Como o critério do projeto é descartar quem não tem o dado, os
+  146 municípios excluídos não são um sorteio aleatório — tendem a ser os
+  de infraestrutura mais frágil, exatamente o perfil de interesse. É um
+  viés de seleção que reduz levemente a representatividade do conjunto de
+  modelagem e deve ser levado em conta ao ler os resultados.
+- **Viés de recorte territorial (fronteira)**: a feature marca se a *sede*
+  do município está na faixa, o que é um recorte binário de um fenômeno
+  contínuo (distância até a linha divisória). Dois municípios de fronteira
+  a 10km e a 145km da divisa recebem o mesmo valor.
 
 ## Critérios de inclusão/exclusão de registros
 
@@ -257,3 +331,26 @@ justificativa individual em `docs/decisoes_limpeza.md`. Resumo:
   os casos, município sem essa informação fica com a coluna em `NaN` no
   refinado, não com um valor imputado — ver `docs/decisoes_limpeza.md`,
   seções 10 e 11.
+- Linha de faixa de fronteira é descartada se `FAIXA_SEDE` vier indefinida
+  (2 linhas no arquivo real) — não se supõe "sim" nem "não". Aqui, e **só
+  aqui**, a ausência do município na tabela vira `0` em vez de `NaN`: a
+  fonte é uma lista positiva completa, então não aparecer nela já é a
+  resposta "não é de fronteira" (seção 12).
+- **Município sem o indicador de atendimento de água (SNIS) é descartado
+  do conjunto de modelagem**, não imputado: são **146 municípios**, o
+  maior descarte do projeto (5.571 → **5.424**, ~2,6%). A alternativa
+  seria inventar um percentual de saneamento para quem não reporta — ver
+  o viés de cobertura registrado acima e `docs/decisoes_limpeza.md`,
+  seção 13.
+
+### Efeito acumulado dos descartes na base de modelagem
+
+| Passo | Municípios |
+|---|---|
+| Dataset refinado completo | 5.571 |
+| − sem PIB / população / cobertura / CNES | −1 |
+| − sem indicador de água (SNIS) | −146 |
+| **Base final de modelagem** | **5.424** |
+
+Essa base de 5.424 é a que alimenta o split 70/15/15 da Etapa 3
+(3.796 / 814 / 814).

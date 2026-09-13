@@ -31,7 +31,7 @@ solução técnica) em
 - **DATASUS / TabNet (SI-PNI)**: Sistema de Informações do Programa Nacional de Imunizações
 - **OpenDataSUS**: bases granulares de doses aplicadas por município, período e faixa etária (PNI), e cadastro de estabelecimentos de saúde (CNES)
 - **IBGE / SIDRA**: dados demográficos e socioeconômicos por município (população, PIB per capita, área territorial/densidade demográfica); ver `docs/decisoes_limpeza.md` sobre por que renda/IDH foram descartados em favor do PIB
-- **IBGE (lista oficial de faixa de fronteira, Lei 6.634/1979)**: municípios com sede na faixa de fronteira (588 municípios, 2024) — ver `docs/decisoes_limpeza.md`, seção 12
+- **IBGE (lista oficial de faixa de fronteira, Lei 6.634/1979)**: edição 2024, com 588 municípios que intersectam a faixa, dos quais **511 têm a sede dentro dela** — é esse o critério usado como feature (`fronteira = 1`), ver `docs/decisoes_limpeza.md`, seção 12
 - **SNIS (saneamento básico), via Base dos Dados**: indicadores de atendimento de água e esgoto por município (ano de referência 2022, o mais completo do painel) — ver `docs/decisoes_limpeza.md`, seção 13
 
 Por que cada fonte foi escolhida (e o que foi avaliado e descartado), o
@@ -90,6 +90,8 @@ imuniza-data-handson-mackenzie/
 │       ├── clean_snis.py       # filtra o ano de referência (2022) e separa água (obrigatória) de esgoto (informativo)
 │       ├── clean_pni.py
 │       └── build_coverage.py
+│   └── inference/                 # Etapa 3: inferência em lote (refined -> priorização)
+│       └── predict.py            # aplica o modelo e grava o ranking de municípios prioritários
 ├── tests/                        # Testes automatizados (pytest)
 ├── reports/                     # Gráficos e relatórios gerados pelos notebooks
 ├── docker-compose.yml            # MinIO local (buckets raw / trusted / refined)
@@ -99,10 +101,10 @@ imuniza-data-handson-mackenzie/
 ## Metodologia
 
 ### Etapa 1: Ingestão de Dados
-Coleta programática de dados de vacinação (SI-PNI/OpenDataSUS) e dados demográficos (IBGE/SIDRA), armazenados em camada raw preservando a granularidade original (município, mês/ano, tipo de vacina, faixa etária). Automação via Python (`pandas`, `requests`).
+Coleta programática de dados de vacinação (SI-PNI/OpenDataSUS) e dados demográficos e de infraestrutura (IBGE/SIDRA, CNES, SNIS), gravados na camada raw exatamente como a fonte entrega, sem transformação. A única exceção é o PNI: por restrição de disco, cada mês é baixado, limpo e descartado sem passar por `raw` (ver `docs/decisoes_limpeza.md`, seção 2) — na camada trusted ele fica agregado por **município × mês × vacina**, granularidade suficiente para a métrica de cobertura e que já elimina o dado individual de paciente. Automação via Python (`pandas`, `requests`, `boto3`).
 
 ### Etapa 2: Análise Exploratória e Limpeza
-Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valores ausentes e inconsistências, e construção da métrica central de cobertura vacinal (doses aplicadas / população-alvo). Identificação de outliers e análise de correlação com variáveis socioeconômicas. Os gráficos gerados pelo notebook e as conclusões da EDA (distribuição da cobertura, ranking por UF, relação com população e PIB per capita, sazonalidade) estão documentados com texto explicativo em [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md), em vez de ficarem soltos na pasta `reports/`.
+Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valores ausentes e inconsistências, e construção da métrica central de cobertura vacinal (doses aplicadas / população residente × 100, ou seja, **doses por 100 habitantes** — é um proxy de intensidade de vacinação, não o percentual de pessoas imunizadas, já que uma mesma pessoa recebe várias doses por ano). Identificação de outliers e análise de correlação com variáveis socioeconômicas. Os gráficos gerados pelo notebook e as conclusões da EDA (distribuição da cobertura, ranking por UF, relação com população e PIB per capita, sazonalidade) estão documentados com texto explicativo em [`docs/analise_exploratoria.md`](docs/analise_exploratoria.md), em vez de ficarem soltos na pasta `reports/`.
 
 ### Etapa 3: Aplicação de ML e Treinamento de Modelos
 - **Classificação** de risco de baixa cobertura (alvo: abaixo do 1º quartil nacional) com três modelos comparados — Regressão Logística, Random Forest e XGBoost — com ajuste de hiperparâmetros (`GridSearchCV`) e tratamento explícito do desbalanceamento de classes (um quarto modelo, KNN, foi testado e removido da comparação final por não aceitar o mesmo tratamento de classes desbalanceadas — ver `docs/decisoes_modelagem.md`, seção 4)
@@ -111,13 +113,21 @@ Padronização dos códigos de município (IBGE, 7 dígitos), tratamento de valo
 - **Clusterização** (K-Means, k escolhido por silhouette score) para segmentar municípios por perfil de cobertura e características socioeconômicas
 - Matriz de comparação de modelos, matriz de confusão, curva ROC, importância de features e checagem de overfitting (treino vs. validação) — narrativa completa dos gráficos em [`docs/resultados_modelagem.md`](docs/resultados_modelagem.md)
 - **Random Forest e XGBoost tratados como equivalentes na regressão**, não um vencedor único: o modelo com menor RMSE trocou entre as duas últimas reexecuções por uma margem cada vez menor (0,11 → 0,05), evidência de que a diferença está dentro do ruído amostral, não de uma vantagem real de um algoritmo sobre o outro — decisão registrada com a justificativa completa em `docs/decisoes_modelagem.md`, seção 10
+- **Pipeline de inferência em lote** (`src/inference/predict.py`): aplica o modelo ao dataset refinado e grava em `refined/priorizacao/` o ranking de municípios por probabilidade de baixa cobertura — a pergunta de negócio respondida em forma de lista acionável, sem intervenção manual
 - Escopo **transversal** (um único ano, 2025), não temporal — ver `docs/decisoes_modelagem.md` sobre por que "prever risco futuro" exigiria um segundo ano de dados que ainda não temos
 
 ## Tecnologias
 
-- Python (pandas, numpy, scikit-learn, xgboost, requests)
-- Jupyter Notebook
-- Matplotlib / Seaborn
+| Camada | Tecnologias |
+|---|---|
+| Linguagem e análise | Python 3, pandas, numpy, scipy |
+| Machine learning | scikit-learn (pipelines, `GridSearchCV`, K-Means), XGBoost |
+| Visualização | Matplotlib, Seaborn |
+| Notebooks | Jupyter |
+| Ingestão | requests (APIs SIDRA/CKAN), stream-unzip (ZIPs do PNI em streaming), xlrd (planilha do IBGE) |
+| Armazenamento | MinIO (compatível com API S3), acessado via boto3; arquivos em Parquet (pyarrow) |
+| Infraestrutura | Docker Compose (sobe o MinIO local com os buckets raw/trusted/refined) |
+| Qualidade | pytest (87 testes das funções puras), GitHub Actions (CI a cada push/PR) |
 
 ## Como Executar
 
@@ -184,12 +194,23 @@ de problemas comuns) em
 ### Etapa 3: Construção de Modelos
 
 ```bash
-jupyter notebook notebooks/03_construcao_modelos.ipynb
+jupyter notebook notebooks/03_construcao_modelos.ipynb   # treino, comparação de modelos e avaliação
+python -m src.inference.predict --ano 2025 --top 20      # inferência em lote: gera a priorização
 ```
 
-Depende só do `refined/cobertura_vacinal` já gerado pela Etapa 2 (mesmos
-comandos acima). Decisões de alvo, algoritmos, split e limitações em
+O notebook depende só do `refined/cobertura_vacinal` já gerado pela Etapa 2
+(mesmos comandos acima). Decisões de alvo, algoritmos, split e limitações em
 [`docs/decisoes_modelagem.md`](docs/decisoes_modelagem.md).
+
+`src/inference/predict.py` é o fluxo automatizado que aplica o modelo:
+treina no ano de referência, pontua o ano alvo e grava
+`refined/priorizacao/ano={ano}/priorizacao_municipios.parquet` (mais um
+`.csv` e um relatório de execução). Com um único ano processado, treino e
+pontuação usam o mesmo ano e a saída é uma **priorização transversal**, não
+uma previsão — quando houver um segundo ano, `--ano-referencia 2025 --ano
+2026` já faz o fluxo temporal sem mudança de código. A saída é um **ranking
+por probabilidade**, não um rótulo binário, porque o modelo (F1 ≈ 0,40) é
+útil para ordenar, não para decidir sozinho.
 
 Decisões de limpeza (o quê e por quê) estão documentadas em
 [`docs/decisoes_limpeza.md`](docs/decisoes_limpeza.md); o schema de cada
@@ -198,10 +219,13 @@ Evidência de que o pipeline roda de ponta a ponta contra dado real
 (volumes processados, testes, notebook executado, histórico de commits)
 está em [`docs/evidencia_execucao.md`](docs/evidencia_execucao.md).
 
-Os nomes de coluna do CSV do PNI usados em `src/cleaning/clean_pni.py`
-foram definidos sem acesso aos dados reais (ambiente de desenvolvimento sem
-rede liberada para o DATASUS). Rode `inspect_pni.py` primeiro e ajuste
-`COLUMN_CANDIDATES` nesse arquivo se os nomes reais divergirem.
+Os nomes de coluna do CSV do PNI usados em `src/cleaning/clean_pni.py` já
+foram **confirmados contra o schema real** da fonte (`co_municipio_paciente`,
+`dt_vacina`, `sg_imunobiologico`, `co_dose_vacina`, `nu_idade_paciente` — ver
+`docs/dicionario_dados.md`). Os nomes hipotéticos usados antes de termos
+acesso aos dados continuam como fallback em `COLUMN_CANDIDATES`, caso o
+schema mude entre anos; `inspect_pni.py` permite reconferir a qualquer
+momento.
 
 ### Testes
 
@@ -210,10 +234,10 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-Os testes rodam automaticamente a cada `push`/`pull request` nas branches
-`main` e `etapa-*` (ex.: `etapa-2`) via GitHub Actions
+São **87 testes**, rodando automaticamente a cada `push`/`pull request` nas
+branches `main` e `etapa-*` (ex.: `etapa-2`) via GitHub Actions
 (`.github/workflows/tests.yml`), sem dependência de MinIO ou rede: cobrem
-apenas as funções puras de limpeza e cruzamento de dados (ver decisão de
+apenas as funções puras de limpeza, cruzamento e inferência (ver decisão de
 arquitetura em `docs/decisoes_limpeza.md`).
 
 ## Licença

@@ -30,7 +30,7 @@ Para a cobertura vacinal especificamente, os números observados são:
 | Desvio padrão | 26,44 |
 | Mínimo | 16,59 |
 | Q1 (25%) | 73,24 |
-| Q3 (75%) | 92,77 |
+| Q3 (75%) | 92,76 |
 | Máximo | 1.606,41 |
 
 **Leitura:** média (84,26) e mediana (82,31) são próximas entre si, o que
@@ -81,12 +81,21 @@ vacinal. Os extremos observados são:
   habitantes — mais de 19x a mediana nacional (82,31), aplicando 371.274
   doses para uma população de apenas 23.112 habitantes.
 
-**Leitura:** um valor de cobertura acima de 100% (que já seria o teto
-teórico se cada dose fosse aplicada em um habitante diferente do próprio
-município) só é possível porque o local aplica doses em pessoas que não
-residem ali. Pacaraima é um município de fronteira com a Venezuela — a
-hipótese mais consistente é atendimento a população não-residente
-(fronteiriça/migrante), não um erro de dado. Essa hipótese de "efeito
+**Leitura:** antes de tudo, uma ressalva sobre a métrica: passar de 100
+doses por 100 habitantes **não** é anomalia por si só. A métrica conta
+doses, não pessoas, e uma mesma pessoa recebe várias doses ao longo do ano
+(vacinas diferentes, esquemas multidose, reforços) — por isso 100 não é
+teto de nada. A própria seção 4 mostra três UFs inteiras acima de 100 na
+média ponderada (RR 143,5, AM 106,7 e MS 103,2), o que não seria possível
+se o valor indicasse "percentual de pessoas vacinadas".
+
+O que chama atenção em Pacaraima não é ultrapassar 100, é a **ordem de
+grandeza**: 1.606 doses por 100 habitantes significa aproximadamente 16
+doses por morador no ano, contra uma mediana nacional de menos de uma. Um
+número desses não se explica por esquema multidose. Pacaraima é município
+de fronteira com a Venezuela, e a hipótese mais consistente é atendimento
+a população não-residente (fronteiriça/migrante) inflando o numerador sem
+afetar o denominador — não um erro de dado. Essa hipótese de "efeito
 fronteira" é retomada e reforçada na seção 4.
 
 ## 4. Cobertura vacinal média por UF
@@ -101,8 +110,9 @@ perguntas centrais definidas em `docs/entendimento_problema.md`.
 
 **O que o gráfico mostra:** um ranking das 27 UFs, da maior cobertura
 média para a menor, com uma linha tracejada marcando a mediana entre UFs
-(83,9). As UFs em azul (acima da mediana) lideradas por **RR (143,5)** e
-**AM**, seguidas por MS, DF, ES, AC, PR, AL, MT, AP, SC, MG, SE, CE; as UFs
+(83,9). As UFs em azul (da mediana para cima) lideradas por **RR (143,5)** e
+**AM**, seguidas por MS, DF, ES, AC, PR, AL, MT, AP, SC, MG, SE e CE — este
+último (83,87) praticamente sobre a própria linha da mediana; as UFs
 em vermelho (abaixo da mediana) vão de PI, RS, TO, MA, GO, SP, RN, PB, RO,
 PA, PE, BA até **RJ (69,3)**, a menor média do país.
 
@@ -150,10 +160,14 @@ quintil):** os valores reais, após a re-execução do notebook, são:
 
 Comparando os dois extremos — como faz o notebook, que gera essa
 conclusão dinamicamente a partir do resultado real —, o desvio padrão de
-Q1 (17,84) é de fato maior do que o de Q5 (14,08): a hipótese de que
-municípios menores têm cobertura mais volátil **se confirma**, ainda que
-com uma diferença modesta, o que explica por que os boxplots parecem tão
-parecidos visualmente entre si.
+Q1 (17,84) é de fato maior do que o de Q5 (14,08): **é um indício a favor**
+da hipótese de que municípios menores têm cobertura mais volátil, mas não
+uma confirmação. A diferença é modesta e, sobretudo, **não é monotônica** —
+o Q3 (18,05) tem desvio maior que o próprio Q1, então não existe um
+gradiente limpo de volatilidade decrescente conforme o porte aumenta. O que
+os dados sustentam é a comparação entre os extremos; tratar isso como lei
+geral seria ir além da evidência. Isso também explica por que os boxplots
+parecem tão parecidos visualmente entre si.
 
 O valor de Q4 (48,47) chama atenção por ser quase o triplo dos demais
 quintis, mas não é um segundo polo de volatilidade por porte populacional:
@@ -249,10 +263,13 @@ um pico em maio de 2025, com **32.325.862 doses** — uma variação de
 **252,1%** entre o vale e o pico — e depois um declínio gradual até
 dezembro.
 
-**Leitura:** o pico de maio coincide com o período típico da Campanha
+**Leitura:** o pico de maio é compatível com o período típico da Campanha
 Nacional de Vacinação contra a Influenza (que historicamente ocorre entre
-março e maio no Brasil), o que dá uma explicação de calendário concreta
-para o padrão observado, em vez de uma anomalia de dado. Isso reforça uma
+março e maio no Brasil) — uma explicação de calendário plausível para o
+padrão, muito mais provável que uma anomalia de dado. Vale marcar que é
+uma **hipótese não testada**: o dado do PNI usado aqui agrega todos os
+imunobiológicos, e confirmar a atribuição exigiria segmentar por tipo de
+vacina, o que está fora do recorte desta etapa. Isso reforça uma
 limitação já documentada no projeto: como o dataset processado cobre
 apenas o ano de 2025, a cobertura calculada é sensível a este calendário
 de campanhas — um ano com calendário de campanhas diferente poderia
@@ -277,6 +294,15 @@ documentadas em [`docs/decisoes_modelagem.md`](decisoes_modelagem.md):
   registrada como uma expectativa a priori de que PIB per capita
   isoladamente não seria uma feature forte — o que foi checado contra o
   resultado real do modelo (importância de features) na Etapa 3.
+- A lição mais transferível desta etapa, porém, veio da comparação entre
+  correlação e importância: features com correlação linear quase nula com
+  a cobertura acabaram carregando sinal real no modelo. É o caso do CNES
+  (correlação 0,090, 2ª maior importância) e do saneamento/água
+  (correlação **−0,019**, 5ª maior importância) — variáveis adicionadas
+  ao conjunto depois desta EDA. Correlação simples mede associação
+  linear par a par; um modelo em árvore capta interações que ela não
+  enxerga. Por isso nenhuma feature candidata foi descartada *só* por ter
+  correlação fraca nesta etapa.
 - A sazonalidade de doses (seção 7) reforça uma limitação já conhecida do
   projeto: um único ano de dado processado impede análise de série
   temporal robusta, o que já está refletido na escolha de classificação

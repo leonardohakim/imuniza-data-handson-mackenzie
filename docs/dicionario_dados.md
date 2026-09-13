@@ -126,6 +126,45 @@ limpeza:
 
 Tratamento em `src/cleaning/clean_cnes.py`.
 
+### `raw/ibge/fronteira/municipios_faixa_fronteira.xls`
+
+Planilha do IBGE "Municípios da Faixa de Fronteira e Cidades-Gêmeas",
+edição 2024, baixada do GeoFTP (organização do território). **Sem partição
+por ano** (mesmo critério de área e CNES: é um snapshot, não série
+histórica). Gravada exatamente como veio, sem parsing — a limpeza acontece
+em `clean_fronteira.py`. Aba usada: `Faixa de Fronteira - Município 2024`.
+
+| Coluna | Descrição |
+|---|---|
+| `CD_MUN` | Código IBGE do município (7 dígitos) |
+| `NM_MUN` | Nome do município |
+| `SIGLA_UF` | UF |
+| `FAIXA_SEDE` | `"sim"`/`"não"` — se a **sede** do município está dentro da faixa de 150km da linha divisória (Lei 6.634/1979) |
+
+**Uma linha por município que intersecta a faixa por área** (~590 no
+total), não uma linha por "município de fronteira": a distinção importa e
+está detalhada em `docs/decisoes_limpeza.md`, seção 12. Das 588 linhas que
+sobram após a limpeza, **511 têm `FAIXA_SEDE = "sim"`** — esse é o critério
+adotado para `fronteira = 1`.
+
+### `raw/basedosdados/snis/municipio_agua_esgoto.csv.gz`
+
+Tabela `br_mdr_snis.municipio_agua_esgoto` baixada da **Base dos Dados**
+(intermediário que republica o SNIS do Ministério das Cidades em formato
+tabular), em CSV comprimido. Traz a série histórica completa; o filtro do
+ano de referência (2022) acontece na limpeza, não na ingestão. Colunas
+usadas (nomes originais da Base dos Dados):
+
+| Coluna | Descrição |
+|---|---|
+| `id_municipio` | Código IBGE do município (7 dígitos) |
+| `ano` | Ano de referência do indicador |
+| `indice_atendimento_total_agua` | % da população atendida por rede de água |
+| `indice_coleta_esgoto` | % com coleta de esgoto |
+| `indice_tratamento_esgoto` | % com tratamento de esgoto |
+
+Tratamento em `src/cleaning/clean_snis.py`.
+
 ## Camada `trusted` (dado limpo e padronizado)
 
 ### `trusted/ibge/populacao/ano={ano}/populacao_municipios.parquet`
@@ -194,6 +233,37 @@ Já agregado por município (o raw é 1 linha por estabelecimento; aqui é
 Também é gravado `_cleaning_report.txt` na mesma pasta, mesmo formato dos
 outros relatórios de limpeza.
 
+### `trusted/ibge/fronteira/municipios_faixa_fronteira.parquet`
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `codigo_municipio` | string (7 dígitos) | Código IBGE do município |
+| `municipio` | string | Nome do município |
+| `uf` | string | Sigla da UF |
+| `fronteira` | int (0/1) | `1` se `FAIXA_SEDE == "sim"` (sede dentro da faixa); `0` se o município apenas intersecta a faixa por área |
+
+**588 linhas** (590 do raw menos 2 com `FAIXA_SEDE` indefinida), das quais
+**511 com `fronteira = 1`**. Municípios ausentes desta tabela não são dado
+faltante: por construção da fonte (lista positiva completa), não tocam a
+faixa — viram `fronteira = 0` no cruzamento. Também é gravado
+`_cleaning_report.txt`, que separa explicitamente as duas contagens
+(`linhas_finais` vs. `municipios_com_sede_na_faixa`).
+
+### `trusted/saneamento/snis/saneamento_municipios.parquet`
+
+Já filtrado para o ano de referência 2022 (o mais completo do painel):
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `codigo_municipio` | string (7 dígitos) | Código IBGE do município |
+| `ano` | string | Sempre `2022` nesta camada |
+| `pct_atendimento_agua` | float | % da população atendida por rede de água — **única usada como feature** |
+| `pct_coleta_esgoto` | float | % com coleta de esgoto — completude de só ~53%, fica disponível mas fora do modelo |
+| `pct_tratamento_esgoto` | float | % com tratamento de esgoto — mesma ressalva do anterior |
+
+Ver `docs/decisoes_limpeza.md`, seção 13, para por que esgoto não entra no
+conjunto de features. Também é gravado `_cleaning_report.txt`.
+
 ## Camada `refined` (pronto para análise/ML)
 
 ### `refined/cobertura_vacinal/ano={ano}/cobertura_municipios.parquet`
@@ -214,6 +284,29 @@ Uma linha por município, IBGE + PNI já cruzados:
 | `densidade_hab_km2` | float (opcional) | `populacao / area_km2`, calculado em `build_coverage.py` a partir da população do próprio dataset (não da densidade que a Tabela 4714 já traz, que usa população de outro ano — ver `src/cleaning/build_coverage.py`); mesma condição de ausência da coluna acima |
 | `qtd_estabelecimentos_saude` | float (opcional) | Total de estabelecimentos de saúde cadastrados no CNES (ver `docs/decisoes_limpeza.md`); cruzado pelo código de 6 dígitos DATASUS (mesma chave das doses), não pelo `codigo_municipio` de 7 dígitos; `NaN`/coluna ausente se `clean_cnes.py` ainda não rodou |
 | `qtd_estabelecimentos_saude_sus` | float (opcional) | Subconjunto de `qtd_estabelecimentos_saude` com atendimento ambulatorial SUS; mesma condição de ausência da coluna acima |
+| `fronteira` | int 0/1 (opcional) | `1` se a sede do município está na faixa de fronteira (lista oficial IBGE 2024, ver trusted acima). **Única coluna em que ausência vira `0` e não `NaN`**, porque a fonte é uma lista positiva completa; coluna ausente se `clean_fronteira.py` ainda não rodou |
+| `pct_atendimento_agua` | float (opcional) | % da população atendida por rede de água (SNIS 2022); `NaN` quando o município não tem o indicador — e nesse caso ele é **descartado** da modelagem, não imputado |
+| `pct_coleta_esgoto` | float (opcional) | % com coleta de esgoto (SNIS 2022); disponível para análise, fora do conjunto de features |
+| `pct_tratamento_esgoto` | float (opcional) | % com tratamento de esgoto (SNIS 2022); mesma condição da anterior |
+
+### `refined/priorizacao/ano={ano}/priorizacao_municipios.parquet` (e `.csv`)
+
+Saída do pipeline de inferência em lote (`src/inference/predict.py`): uma
+linha por município pontuado, ordenada da maior para a menor probabilidade
+de baixa cobertura.
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `codigo_municipio` | string (7 dígitos) | Código IBGE do município |
+| `municipio` / `uf` / `regiao` | string | Identificação e recorte geográfico |
+| `populacao` | int64 | População residente estimada |
+| `cobertura_doses_por_100_habitantes` | float | Cobertura observada no ano pontuado |
+| `probabilidade_baixa_cobertura` | float (0-1) | Saída do Random Forest — **é o campo principal**, usado para ordenar |
+| `ranking_prioridade` | int | Posição no ranking (1 = maior probabilidade) |
+| `faixa_prioridade` | string | Leitura auxiliar por decil: `muito alta` (10% do topo), `alta`, `média`, `baixa` — não é um veredito, ver docstring de `predict.py` |
+
+Ao lado é gravado `_inference_report.txt`, com o ano de treino, o ano
+pontuado, os descartes, o corte do alvo e as features usadas.
 
 ## Camada de modelagem (Etapa 3, derivada em notebook — não persistida no MinIO)
 
@@ -224,9 +317,17 @@ Justificativa de cada uma em `docs/decisoes_modelagem.md`.
 | Coluna | Tipo | Descrição |
 |---|---|---|
 | `uf` | string | Sigla da UF, extraída de `municipio` (`"Nome - UF"`) |
-| `fronteira` | int (0/1) | `1` se a UF do município está entre as 11 da faixa de fronteira (Lei 6.634/1979: AC, AP, AM, MT, MS, PA, PR, RS, RO, RR, SC) — aproximação por UF, não pela lista oficial de municípios |
+| `fronteira` | int (0/1) | Vem pronta do `refined` (lista oficial do IBGE, sede na faixa). Só quando essa coluna não existe o notebook cai no **fallback** de aproximação por UF (as 11 UFs da faixa: AC, AP, AM, MT, MS, PA, PR, RS, RO, RR, SC) — ver `docs/decisoes_modelagem.md`, seção 1 |
 | `regiao` | string | Macrorregião (Norte/Nordeste/Centro-Oeste/Sudeste/Sul), derivada da UF |
 | `log_populacao` | float | `log1p(populacao)` |
 | `log_pib_per_capita` | float | `log1p(pib_per_capita_reais)` |
-| `baixa_cobertura` | int (0/1) | Alvo de classificação: `1` se `cobertura_doses_por_100_habitantes` está abaixo do 1º quartil nacional |
+| `estabelecimentos_saude_sus_por_100k_hab` | float | `qtd_estabelecimentos_saude_sus / populacao * 100.000` — normaliza o CNES pelo porte do município, que de outro modo seria quase redundante com `log_populacao` |
+| `log_estabelecimentos_saude_sus_por_100k_hab` | float | `log1p` da coluna acima — é essa que entra como feature |
+| `log_densidade_hab_km2` | float (condicional) | `log1p(densidade_hab_km2)`; só existe se área/densidade estiver no `refined` |
+| `pct_atendimento_agua` | float (condicional) | Entra como feature **sem transformação** (já é percentual); só existe se o SNIS estiver no `refined`, e municípios sem o indicador são descartados |
+| `baixa_cobertura` | int (0/1) | Alvo de classificação: `1` se `cobertura_doses_por_100_habitantes` está abaixo do 1º quartil do conjunto de modelagem (73,25 doses/100 hab. na execução atual) |
 | `cluster` | int | Rótulo do K-Means (segmentação por perfil), não usado como feature de classificação |
+
+As mesmas colunas são reconstruídas, com a mesma lógica condicional, por
+`preparar_features()` em `src/inference/predict.py` — para que a inferência
+em lote use exatamente o conjunto de features que foi medido no notebook.

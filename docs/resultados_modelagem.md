@@ -74,11 +74,29 @@ pequeno, F1 treino 0,468 vs. validação 0,446 — ver
 `docs/decisoes_modelagem.md`, seção 11 — o que não sugere overfitting
 relevante). Em termos de negócio: o recall de 114/(114+89) ≈ 0,56
 significa que o modelo identifica pouco mais da metade dos municípios
-realmente de baixa cobertura — bem acima de um sorteio aleatório (que
-pegaria ~25%, a proporção da classe), mesmo sem ser um preditor forte. A
-precisão de 114/(114+254) ≈ 0,31 mostra o outro lado: de cada 10
-municípios que o modelo aponta como risco, cerca de 3 de fato são — os
-outros 7 seriam investigados à toa. Isso é o que caracteriza esta
+realmente de baixa cobertura. A precisão de 114/(114+254) ≈ 0,31 mostra o
+outro lado: de cada 10 municípios que o modelo aponta como risco, cerca de
+3 de fato são — os outros 7 seriam investigados à toa.
+
+**Quanto disso é ganho real sobre o acaso?** É a pergunta certa a fazer, e
+a resposta exige cuidado com a base de comparação. O modelo sinaliza 368
+dos 814 municípios do teste (45%) para capturar 56% dos positivos. Um
+sorteio aleatório que marcasse esses **mesmos 45%** capturaria, em média,
+45% dos positivos — não 25%. Então o ganho real é:
+
+- recall 56,2% contra 45,2% do acaso no mesmo orçamento de investigação →
+  **1,24x**
+- precisão 0,310 contra a taxa base de 0,249 → **1,24x** (o mesmo número,
+  como tem que ser)
+
+Ou seja: o modelo acerta cerca de **1,24 vez mais** que marcar municípios
+ao acaso — um ganho modesto e real, coerente com o ROC-AUC de 0,604 (0,50
+seria o acaso puro). Comparar os 56% de recall diretamente com os 25% da
+proporção da classe seria enganoso: 25% é o recall de um sorteio que
+marcasse apenas 25% dos municípios, um orçamento muito menor que o do
+modelo — e é possível elevar o recall arbitrariamente só sinalizando mais
+gente. É por isso que a leitura honesta aqui é "prioriza um pouco melhor
+que o acaso", não "identifica o dobro". Isso é o que caracteriza esta
 ferramenta como um apoio à priorização, não um veredito automático.
 
 ## 3. Importância de features
@@ -161,15 +179,21 @@ prioridade em campanhas de imunização. O Cluster 1, de maior cobertura
 média (95,1), é também o de **menor população mediana** (5.706 hab.)
 entre os três, e o de maior percentual de municípios de fronteira (17%,
 mais que o dobro do Cluster 2 e mais de cinco vezes o Cluster 0). O
-tamanho dos clusters e os percentuais mudaram ligeiramente desde a
-rodada anterior (a rodada anterior tinha 2.278/1.198/2.094 municípios
-nos perfis equivalentes) — em parte por causa do dropna de água (146
-municípios a menos no dataset total), não necessariamente por uma
-mudança de fundo no padrão. A leitura qualitativa se mantém: isso é um
-sinal de alerta, não uma boa notícia sem ressalvas — a seção 5 do
-notebook 02 já mostrou que municípios pequenos têm a métrica de
-cobertura mais volátil (poucas doses mudam bastante o percentual), e a
-seção 4 mostrou o efeito de fronteira inflando cobertura por atendimento
+tamanho dos clusters mudou de forma relevante desde a rodada anterior
+(que tinha 2.278/1.198/2.094 municípios, contra 2.221/2.052/1.151 agora).
+Os 146 municípios removidos pelo dropna de água não explicam
+deslocamentos dessa magnitude: o K-Means efetivamente reorganizou os
+grupos ao ganhar uma feature nova, trocando boa parte do conteúdo entre
+dois dos perfis. Isso é um lembrete de que os rótulos de cluster não são
+estáveis entre rodadas — o que se mantém estável, e é o que interessa,
+é a **leitura qualitativa** dos perfis: existe um grupo grande de
+cobertura baixa, renda baixa e porte pequeno, e um grupo de cobertura
+alta puxado por municípios pequenos e de fronteira.
+
+Essa cobertura alta é um sinal de alerta, não uma boa notícia sem
+ressalvas — a seção 5 do notebook 02 já mostrou que municípios pequenos
+têm a métrica de cobertura mais volátil (poucas doses mudam bastante o
+percentual), e a seção 3 mostrou o efeito de fronteira inflando cobertura por atendimento
 a não-residentes. A cobertura mais alta deste cluster provavelmente é,
 em parte, esse duplo efeito — não necessariamente melhor acesso real à
 vacinação. Tratar o Cluster 1 como "referência de boa cobertura" sem
@@ -239,11 +263,14 @@ completa em `docs/decisoes_modelagem.md`, seção 11.
 ![Previsto vs. real e resíduos — Random Forest](../reports/regressao_previsto_vs_real.png)
 
 **O que o gráfico mostra:** à esquerda, cobertura prevista vs. real no
-teste — os pontos previstos ficam concentrados numa faixa relativamente
-estreita (~75-100), enquanto a cobertura real varia muito mais (de perto
-de 0 a ~190, com pelo menos um outlier isolado por volta de 150-160). À
-direita, os resíduos (real − previsto) espalhados sem um padrão
-sistemático óbvio em torno de zero.
+teste — os pontos previstos ficam concentrados numa faixa estreita
+(~75-100), enquanto a cobertura real se espalha de ~40 a ~170. O
+descolamento fica visível na comparação com a diagonal: nos municípios de
+cobertura real alta o modelo prevê muito abaixo, e há um ponto em que ele
+prevê ~150 para um município cuja cobertura real é ~87 (o maior erro
+individual do conjunto). À direita, os resíduos (real − previsto)
+espalhados em torno de zero, sem padrão sistemático óbvio, mas com
+amplitude alta (de −65 a +87).
 
 **Leitura:** o modelo ainda erra bastante em valor absoluto e continua
 "regredindo à média" — prevendo valores numa faixa estreita mesmo para

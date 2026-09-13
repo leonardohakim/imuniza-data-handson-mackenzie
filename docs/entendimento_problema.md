@@ -20,9 +20,10 @@ nenhum recorte pronto que combine "doses aplicadas por município" com
 "população daquele município" e produza uma métrica direta e comparável
 entre municípios**. Um gestor de saúde pública que queira essa resposta
 hoje precisaria baixar e cruzar essas bases manualmente — algo inviável na
-prática dado o volume (dezenas de milhões de registros de doses só em
-2025) e a necessidade de repetir esse cruzamento periodicamente, à medida
-que novos dados chegam.
+prática dado o volume (**175,9 milhões de doses registradas só em 2025**,
+com arquivos mensais que passam de 15 GB descompactados) e a necessidade
+de repetir esse cruzamento periodicamente, à medida que novos dados
+chegam.
 
 ## Por que isso importa
 
@@ -54,8 +55,13 @@ seja feita com base em dado, não em suposição.
 ## Perguntas que o projeto pretende responder
 
 1. Quais municípios brasileiros apresentam cobertura vacinal (doses
-   aplicadas por 100 habitantes) abaixo da mediana nacional, e como essa
+   aplicadas por 100 habitantes) abaixo do padrão nacional, e como essa
    cobertura se distribui entre as Unidades da Federação?
+   *(A análise exploratória respondeu pela **mediana**, o corte natural
+   para descrever a distribuição; a Etapa 3 operacionalizou o alvo do
+   modelo pelo **1º quartil**, corte mais restritivo que isola o quarto
+   mais crítico em vez de metade do país — ver `docs/decisoes_modelagem.md`,
+   seção 2.)*
 2. Existe relação entre a cobertura vacinal de um município e o porte da
    sua população (municípios pequenos vs. grandes)?
 3. Existe relação entre a cobertura vacinal e o nível socioeconômico do
