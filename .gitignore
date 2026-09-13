@@ -4,6 +4,8 @@ __pycache__/
 *.csv
 *.zip
 *.parquet
+*.xls
+*.xlsx
 minio_data/
 .venv/
 .pytest_cache/
